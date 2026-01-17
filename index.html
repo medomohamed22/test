@@ -3,228 +3,228 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مدفوعات Pi Network</title>
-    
+    <title>Pi Chat - تطبيق المحادثة العصري</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
-
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
-            --pi-purple: #5e2a84;
-            --pi-gold: #ffa500;
+            --primary-color: #673ab7;
             --bg-color: #f0f2f5;
+            --chat-bg: #e5ddd5;
+            --text-dark: #333;
+            --white: #ffffff;
         }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            color: #333;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
 
-        .payment-card {
-            background: white;
-            padding: 30px;
-            border-radius: 25px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-        }
+        body { background-color: var(--bg-color); height: 100vh; display: flex; flex-direction: column; }
 
-        .pi-logo {
-            width: 70px;
-            height: 70px;
-            background: var(--pi-purple);
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 0 auto 20px;
-        }
+        /* App Layout */
+        .app-container { display: flex; height: 100vh; width: 100%; overflow: hidden; }
 
-        .pi-logo span {
-            color: white;
-            font-size: 40px;
-            font-weight: bold;
-        }
+        /* Sidebar */
+        .sidebar { width: 30%; background: var(--white); border-left: 1px solid #ddd; display: flex; flex-direction: column; }
+        @media (max-width: 768px) { .sidebar { width: 100%; } .chat-area { display: none; } }
 
-        h2 {
-            margin: 10px 0;
-            color: var(--pi-purple);
-        }
+        .header { padding: 20px; background: var(--primary-color); color: white; display: flex; justify-content: space-between; align-items: center; }
 
-        .user-info {
-            font-size: 1.1rem;
-            margin-bottom: 20px;
-            color: #666;
-        }
+        .search-box { padding: 10px; background: #f6f6f6; }
+        .search-box input { width: 100%; padding: 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; }
 
-        #username {
-            font-weight: bold;
-            color: var(--pi-purple);
-        }
+        .user-list { flex: 1; overflow-y: auto; }
+        .user-item { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: 0.3s; }
+        .user-item:hover { background: #f9f9f9; }
+        .user-avatar { width: 50px; height: 50px; border-radius: 50%; background: #ccc; margin-left: 15px; }
 
-        .price-box {
-            background: #fff9e6;
-            border: 2px solid var(--pi-gold);
-            padding: 15px;
-            border-radius: 15px;
-            margin-bottom: 25px;
-        }
+        /* Chat Area */
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); }
+        .chat-header { padding: 15px; background: #ededed; display: flex; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        
+        .msg { max-width: 70%; padding: 10px 15px; border-radius: 15px; font-size: 14px; position: relative; }
+        .msg.sent { align-self: flex-end; background: #dcf8c6; }
+        .msg.received { align-self: flex-start; background: var(--white); }
 
-        .amount {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #333;
-        }
+        .input-area { padding: 15px; background: #f0f0f0; display: flex; align-items: center; gap: 10px; }
+        .input-area input { flex: 1; padding: 12px; border-radius: 25px; border: none; outline: none; }
+        .btn-send { background: var(--primary-color); color: white; border: none; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; }
+        .btn-pi { background: #ffa000; color: white; border: none; padding: 8px 15px; border-radius: 20px; font-weight: bold; cursor: pointer; }
 
-        .currency {
-            font-size: 1.2rem;
-            color: var(--pi-gold);
-            font-weight: bold;
-        }
-
-        .btn-pay {
-            background: var(--pi-purple);
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            font-size: 1.2rem;
-            border-radius: 50px;
-            cursor: pointer;
-            width: 100%;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(94, 42, 132, 0.3);
-        }
-
-        .btn-pay:hover:not(:disabled) {
-            background: #4a1f69;
-            transform: translateY(-2px);
-        }
-
-        .btn-pay:disabled {
-            background: #ccc;
-            box-shadow: none;
-            cursor: not-allowed;
-        }
-
-        .status {
-            margin-top: 15px;
-            font-size: 0.9rem;
-            min-height: 20px;
-        }
-
-        .success { color: green; }
-        .error { color: red; }
+        /* Modal */
+        #login-overlay { position: fixed; inset: 0; background: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
     </style>
 </head>
 <body>
 
-    <div class="payment-card">
-        <div class="pi-logo"><span>π</span></div>
-        
-        <h2>بوابة مدفوعات Pi</h2>
-        
-        <div class="user-info">
-            مرحباً، <span id="username">جاري التعرف عليك...</span>
-        </div>
+    <div id="login-overlay">
+        <h1 style="color: var(--primary-color); margin-bottom: 20px;">مرحباً بك في Pi Chat</h1>
+        <button onclick="loginWithPi()" class="btn-pi" style="padding: 15px 40px; font-size: 18px;">
+            <i class="fab fa-pi"></i> تسجيل الدخول عبر Pi Network
+        </button>
+    </div>
 
-        <div class="price-box">
-            <div class="amount">1.0</div>
-            <div class="currency">Pi Network</div>
-        </div>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="header">
+                <h3>المحادثات</h3>
+                <i class="fas fa-ellipsis-v"></i>
+            </div>
+            <div class="search-box">
+                <input type="text" id="userSearch" placeholder="ابحث عن اسم المستخدم..." onkeyup="searchUsers()">
+            </div>
+            <div class="user-list" id="userList">
+                </div>
+        </aside>
 
-        <button id="pay-button" class="btn-pay" disabled>تفعيل الدفع</button>
-        
-        <div id="status-msg" class="status"></div>
+        <main class="chat-area">
+            <div class="chat-header">
+                <div class="user-avatar" id="current-chat-avatar"></div>
+                <div class="chat-info">
+                    <h4 id="current-chat-name">اختر صديقاً لبدء الدردشة</h4>
+                </div>
+                <button class="btn-pi" style="margin-right: auto;" onclick="makePayment()">
+                    <i class="fas fa-coins"></i> إرسال Pi
+                </button>
+            </div>
+            
+            <div class="messages" id="messageDisplay">
+                </div>
+
+            <div class="input-area">
+                <i class="far fa-smile fa-lg"></i>
+                <input type="text" id="messageInput" placeholder="اكتب رسالة...">
+                <button class="btn-send" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </main>
     </div>
 
     <script>
+        // إعداد Supabase
+        const SUPABASE_URL = "https://xncapmzlwuisupkjlftb.supabase.co";
+        const SUPABASE_KEY = "sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS";
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // إعداد Pi SDK
         const Pi = window.Pi;
-        const statusMsg = document.getElementById('status-msg');
-        const payButton = document.getElementById('pay-button');
+        Pi.init({ version: "2.0", sandbox: false }); // اجعل sandbox: false عند النشر الفعلي
 
-        // 1. تهيئة الـ SDK (Sandbox False للبيئة الحقيقية)
-        Pi.init({ version: "2.0", sandbox: false });
+        let currentUser = null;
+        let activeChatRecipient = null;
 
-        // 2. تسجيل الدخول والتعرف على المستخدم
-        async function authenticateUser() {
+        // 1. تسجيل الدخول عبر Pi Network
+        async function loginWithPi() {
             try {
                 const scopes = ['username', 'payments'];
                 const auth = await Pi.authenticate(scopes, onIncompletePaymentFound);
+                currentUser = auth.user;
                 
-                document.getElementById('username').innerText = auth.user.username;
-                payButton.disabled = false;
-                showStatus("جاهز لإتمام العملية", "success");
+                // حفظ المستخدم في قاعدة بيانات Supabase
+                const { error } = await supabase
+                    .from('users')
+                    .upsert({ 
+                        username: currentUser.username, 
+                        pi_id: currentUser.uid,
+                        last_seen: new Date() 
+                    });
+
+                document.getElementById('login-overlay').style.display = 'none';
+                loadUsers();
             } catch (err) {
-                console.error(err);
-                showStatus("فشل الاتصال بـ Pi SDK", "error");
-                document.getElementById('username').innerText = "زائر";
+                alert("خطأ في تسجيل الدخول: " + err.message);
             }
         }
 
-        // 3. معالجة المدفوعات العالقة (مهم جداً لسياسة Pi)
-        async function onIncompletePaymentFound(payment) {
-            showStatus("يوجد عملية سابقة معلقة، جاري المعالجة...", "error");
-            // هنا يمكنك إرسال payment.identifier إلى السيرفر لإكمالها
+        function onIncompletePaymentFound(payment) {
+            console.log("هناك دفع غير مكتمل:", payment);
+        };
+
+        // 2. البحث عن مستخدمين وجلب القائمة
+        async function loadUsers() {
+            let { data: users, error } = await supabase.from('users').select('*');
+            displayUsers(users);
         }
 
-        // 4. وظيفة الدفع عند الضغط على الزر
-        payButton.addEventListener('click', () => {
+        function displayUsers(users) {
+            const list = document.getElementById('userList');
+            list.innerHTML = '';
+            users.forEach(user => {
+                if(user.username === currentUser.username) return;
+                list.innerHTML += `
+                    <div class="user-item" onclick="startChat('${user.username}')">
+                        <div class="user-avatar"></div>
+                        <div><strong>${user.username}</strong></div>
+                    </div>
+                `;
+            });
+        }
+
+        async function searchUsers() {
+            const query = document.getElementById('userSearch').value;
+            let { data: users } = await supabase
+                .from('users')
+                .select('*')
+                .ilike('username', `%${query}%`);
+            displayUsers(users);
+        }
+
+        // 3. نظام المراسلة
+        async function startChat(username) {
+            activeChatRecipient = username;
+            document.getElementById('current-chat-name').innerText = username;
+            loadMessages();
+            
+            // الاشتراك في الرسائل الجديدة (Realtime)
+            supabase.channel('public:messages')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                if(payload.new.receiver === currentUser.username || payload.new.sender === currentUser.username) {
+                    appendMessage(payload.new);
+                }
+            }).subscribe();
+        }
+
+        async function sendMessage() {
+            const text = document.getElementById('messageInput').value;
+            if(!text || !activeChatRecipient) return;
+
+            await supabase.from('messages').insert([
+                { sender: currentUser.username, receiver: activeChatRecipient, content: text }
+            ]);
+
+            document.getElementById('messageInput').value = '';
+        }
+
+        function appendMessage(msg) {
+            const container = document.getElementById('messageDisplay');
+            const side = msg.sender === currentUser.username ? 'sent' : 'received';
+            container.innerHTML += `<div class="msg ${side}">${msg.content}</div>`;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // 4. نظام الدفع Pi SDK
+        async function makePayment() {
+            if(!activeChatRecipient) return alert("اختر مستخدماً للدفع له");
+
             const paymentData = {
-                amount: 1.0,
-                memo: "شراء منتج تجريبي", // الوصف الذي يظهر للمستخدم
-                metadata: { orderId: "12345" } 
+                amount: 1,
+                memo: `تحويل من ${currentUser.username} إلى ${activeChatRecipient}`,
+                metadata: { recipient: activeChatRecipient }
             };
 
             const callbacks = {
                 onReadyForServerApproval: (paymentId) => {
-                    showStatus("جاري انتظار موافقة السيرفر...", "");
-                    // استدعاء ملف الـ approve الذي أنشأته في Netlify
-                    fetch('/api/pi/approve', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ paymentId })
-                    });
+                    // هنا يتم إرسال المعرف لخادم Netlify الخاص بك كما في إعدادات redirects
+                    fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({ paymentId }) });
                 },
                 onReadyForServerCompletion: (paymentId, txid) => {
-                    showStatus("جاري تأكيد المعاملة على البلوكشين...", "success");
-                    // استدعاء ملف الـ complete الذي أنشأته في Netlify
-                    fetch('/api/pi/complete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ paymentId, txid })
-                    }).then(res => {
-                        if (res.ok) {
-                            showStatus("تمت عملية الدفع بنجاح! شكرًا لك.", "success");
-                            payButton.innerText = "تم الدفع ✅";
-                            payButton.disabled = true;
-                        }
-                    });
+                    fetch('/api/pi/complete', { method: 'POST', body: JSON.stringify({ paymentId, txid }) });
                 },
-                onCancel: (paymentId) => {
-                    showStatus("تم إلغاء العملية من قبل المستخدم", "error");
-                },
-                onError: (error, payment) => {
-                    showStatus("حدث خطأ أثناء الدفع", "error");
-                    console.error(error);
-                }
+                onCancel: (paymentId) => console.log("تم الإلغاء"),
+                onError: (error, payment) => console.error("خطأ في الدفع", error)
             };
 
             Pi.createPayment(paymentData, callbacks);
-        });
-
-        function showStatus(msg, type) {
-            statusMsg.innerText = msg;
-            statusMsg.className = "status " + type;
         }
-
-        // بدء التشغيل
-        authenticateUser();
     </script>
 </body>
 </html>
