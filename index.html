@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pi Chat Pro</title>
+    <title>Pi Chat Ultra</title>
     
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -11,277 +11,207 @@
 
     <style>
         :root {
-            --primary-color: #6a1b9a;
-            --secondary-color: #4a148c;
-            --bg-light: #f4f7f6;
-            --chat-bg: #e5ddd5;
+            --primary: #6a1b9a;
+            --secondary: #4a148c;
+            --bg: #efe7dd;
             --white: #ffffff;
-            --my-msg: #dcf8c6;
+            --sent: #dcf8c6;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
 
-        body { background-color: var(--bg-light); height: 100vh; overflow: hidden; display: flex; }
+        body { background: #f0f2f5; height: 100vh; display: flex; overflow: hidden; }
 
-        /* شاشة تسجيل الدخول */
+        /* شاشة الدخول */
         #login-overlay {
-            position: fixed; inset: 0; background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            position: fixed; inset: 0; background: linear-gradient(135deg, var(--primary), var(--secondary));
             display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; color: white;
         }
 
-        .btn-login {
-            background: #ffa000; color: white; border: none; padding: 15px 40px; 
-            border-radius: 30px; font-size: 1.2rem; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-
-        /* حاوية التطبيق */
+        /* التصميم العام */
         .app-container { display: flex; width: 100%; height: 100vh; }
 
         /* القائمة الجانبية */
-        .sidebar { width: 350px; background: var(--white); border-left: 1px solid #ddd; display: flex; flex-direction: column; }
-        
-        .sidebar-header { padding: 15px; background: var(--primary-color); color: white; }
-        .search-container { padding: 10px; background: #f6f6f6; }
-        .search-container input { 
-            width: 100%; padding: 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; text-align: right;
-        }
-
+        .sidebar { width: 350px; background: white; border-left: 1px solid #ddd; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 20px; background: var(--primary); color: white; }
         .user-list { flex: 1; overflow-y: auto; }
-        .user-card { 
-            display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s;
-        }
-        .user-card:hover { background: #f0f0f0; }
-        .avatar { width: 45px; height: 45px; border-radius: 50%; background: #ccc; margin-left: 12px; }
+        .user-card { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+        .user-card:hover { background: #f5f5f5; }
 
-        /* منطقة المحادثة */
-        .chat-main { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; }
+        /* منطقة الدردشة */
+        .chat-main { flex: 1; display: flex; flex-direction: column; background: var(--bg); }
+        .chat-header { padding: 10px 20px; background: #f0f0f0; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #ddd; }
         
-        .chat-header { 
-            padding: 10px 20px; background: #ededed; display: flex; align-items: center; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 10;
-        }
+        /* قسم الدفع في الهيدر */
+        .pay-section { margin-right: auto; display: flex; align-items: center; gap: 5px; background: #fff; padding: 5px 10px; border-radius: 20px; border: 1px solid #ffca28; }
+        .pay-section input { width: 60px; border: none; outline: none; text-align: center; font-weight: bold; }
+        .pay-btn { background: #ffca28; border: none; padding: 5px 15px; border-radius: 15px; cursor: pointer; font-weight: bold; }
 
-        .messages-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .messages-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .msg { max-width: 75%; padding: 10px 15px; border-radius: 15px; font-size: 15px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .msg.sent { align-self: flex-end; background: var(--sent); border-top-left-radius: 2px; }
+        .msg.received { align-self: flex-start; background: white; border-top-right-radius: 2px; }
 
-        .bubble { 
-            max-width: 70%; padding: 8px 12px; border-radius: 12px; font-size: 15px; line-height: 1.4;
-            position: relative; word-wrap: break-word;
-        }
-        .bubble.sent { align-self: flex-end; background: var(--my-msg); border-top-left-radius: 0; }
-        .bubble.received { align-self: flex-start; background: var(--white); border-top-right-radius: 0; }
+        .input-bar { padding: 15px; background: #f0f0f0; display: flex; gap: 10px; align-items: center; }
+        .input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; outline: none; }
+        .send-btn { background: var(--primary); color: white; border: none; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; }
 
-        /* إدخال الرسائل */
-        .input-bar { padding: 10px; background: #f0f0f0; display: flex; align-items: center; gap: 10px; }
-        .input-bar input { 
-            flex: 1; padding: 12px; border-radius: 25px; border: none; outline: none; font-size: 15px;
-        }
-        .send-btn { 
-            background: var(--primary-color); color: white; border: none; 
-            width: 45px; height: 45px; border-radius: 50%; cursor: pointer;
-        }
-
-        /* للهواتف */
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; position: absolute; z-index: 20; transition: 0.3s; }
-            .sidebar.hidden { transform: translateX(100%); }
-            .chat-main { width: 100%; }
-        }
+        @media (max-width: 768px) { .sidebar { display: none; } }
     </style>
 </head>
 <body>
 
     <div id="login-overlay">
-        <i class="fab fa-pi" style="font-size: 4rem; margin-bottom: 20px;"></i>
-        <h2>Pi Chat Messenger</h2>
-        <p style="margin-bottom: 20px; opacity: 0.8;">تواصل مع رواد شبكة Pi بكل سهولة</p>
-        <button class="btn-login" onclick="handlePiAuth()">تسجيل الدخول باستخدام Pi</button>
+        <i class="fab fa-pi" style="font-size: 50px; margin-bottom: 15px;"></i>
+        <h2>مرحباً بك في Pi Chat</h2>
+        <button onclick="handlePiAuth()" style="margin-top:20px; padding:15px 30px; border-radius:25px; border:none; background:#ffca28; cursor:pointer; font-weight:bold;">دخول عبر Pi Network</button>
     </div>
 
     <div class="app-container">
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h3>المحادثات</h3>
-            </div>
-            <div class="search-container">
-                <input type="text" id="userSearch" placeholder="بحث عن مستخدم..." onkeyup="filterUsers()">
-            </div>
-            <div class="user-list" id="users">
-                </div>
+        <aside class="sidebar">
+            <div class="sidebar-header"><h3>المحادثات</h3></div>
+            <div class="user-list" id="users"></div>
         </aside>
 
         <main class="chat-main">
             <div class="chat-header">
-                <button id="backBtn" style="display:none; margin-left:10px;" onclick="toggleSidebar(true)">
-                    <i class="fas fa-arrow-right"></i>
-                </button>
-                <div class="avatar"></div>
-                <div style="flex: 1;">
-                    <h4 id="activeUserName">اختر مستخدماً للدردشة</h4>
-                    <small id="statusText" style="color: #888;">متصل</small>
+                <div id="activeUserName" style="font-weight: bold;">اختر صديقاً</div>
+                <div class="pay-section" id="payPanel" style="display:none;">
+                    <input type="number" id="piAmount" value="1" step="0.1" min="0.01">
+                    <span style="font-size: 12px;">Pi</span>
+                    <button class="pay-btn" onclick="payPi()">إرسال</button>
                 </div>
-                <button class="send-btn" style="background: #ffa000; width: auto; padding: 0 15px; border-radius: 10px;" onclick="payPi()">
-                    <i class="fas fa-coins"></i> دفع 1 Pi
-                </button>
             </div>
 
-            <div class="messages-area" id="msgBox">
-                </div>
+            <div class="messages-area" id="msgBox"></div>
 
             <div class="input-bar">
-                <input type="text" id="msgInput" placeholder="اكتب رسالة..." onkeypress="if(event.key==='Enter') sendMsg()">
-                <button class="send-btn" onclick="sendMsg()">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
+                <input type="text" id="msgInput" placeholder="اكتب رسالتك هنا..." onkeypress="if(event.key==='Enter') sendMsg()">
+                <button class="send-btn" onclick="sendMsg()"><i class="fas fa-paper-plane"></i></button>
             </div>
         </main>
     </div>
 
     <script>
-        // 1. إعدادات الربط
         const SUPABASE_URL = "https://xncapmzlwuisupkjlftb.supabase.co";
         const SUPABASE_KEY = "sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS";
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const Pi = window.Pi;
-        Pi.init({ version: "2.0", sandbox: false }); // البيئة الحقيقية
+        Pi.init({ version: "2.0", sandbox: false });
 
         let currentUser = null;
         let selectedUser = null;
 
-        // 2. المصادقة مع Pi
+        // 1. الدخول والمصادقة
         async function handlePiAuth() {
             try {
-                const scopes = ['username', 'payments', 'wallet_address'];
-                const auth = await Pi.authenticate(scopes, onIncompletePayment);
-                
+                const auth = await Pi.authenticate(['username', 'payments'], onIncompletePayment);
                 currentUser = auth.user;
 
-                // تسجيل المستخدم في Supabase
-                await supabaseClient.from('users').upsert({
+                await supabase.from('users').upsert({
                     username: currentUser.username,
                     pi_id: currentUser.uid,
-                    last_seen: new Date().toISOString()
-                }, { onConflict: 'username' });
+                    last_seen: new Date()
+                });
 
                 document.getElementById('login-overlay').style.display = 'none';
                 loadUsersList();
-                subscribeToMessages();
-            } catch (err) {
-                alert("خطأ في الاتصال بـ Pi SDK: " + err.message);
-            }
+                listenToMessages(); // تشغيل الاستماع اللحظي
+            } catch (e) { alert("فشل الدخول: " + e.message); }
         }
 
-        function onIncompletePayment(payment) { /* للتعامل مع المدفوعات المعلقة */ }
+        function onIncompletePayment(payment) { /* منطق استعادة المدفوعات */ }
 
-        // 3. جلب المستخدمين
+        // 2. جلب المستخدمين
         async function loadUsersList() {
-            const { data } = await supabaseClient.from('users').select('*');
-            const listDiv = document.getElementById('users');
-            listDiv.innerHTML = '';
-            
-            data.forEach(user => {
-                if(user.username === currentUser.username) return;
-                const div = document.createElement('div');
-                div.className = 'user-card';
-                div.onclick = () => selectChat(user.username);
-                div.innerHTML = `
-                    <div class="avatar"></div>
-                    <div><strong>${user.username}</strong><br><small>انقر لبدء المحادثة</small></div>
-                `;
-                listDiv.appendChild(div);
-            });
+            const { data } = await supabase.from('users').select('*');
+            const list = document.getElementById('users');
+            list.innerHTML = data.map(u => u.username !== currentUser.username ? `
+                <div class="user-card" onclick="selectChat('${u.username}')">
+                    <div style="width:40px;height:40px;background:#ccc;border-radius:50%"></div>
+                    <span>${u.username}</span>
+                </div>
+            ` : '').join('');
         }
 
-        // 4. نظام الدردشة
+        // 3. اختيار الدردشة
         async function selectChat(username) {
             selectedUser = username;
             document.getElementById('activeUserName').innerText = username;
+            document.getElementById('payPanel').style.display = 'flex';
             document.getElementById('msgBox').innerHTML = '';
             
-            if(window.innerWidth < 768) toggleSidebar(false);
-
-            const { data } = await supabaseClient
-                .from('messages')
+            // جلب الأرشيف
+            const { data } = await supabase.from('messages')
                 .select('*')
                 .or(`and(sender.eq.${currentUser.username},receiver.eq.${username}),and(sender.eq.${username},receiver.eq.${currentUser.username})`)
                 .order('created_at', { ascending: true });
 
-            data.forEach(renderMessage);
+            if(data) data.forEach(appendMsg);
         }
 
+        // 4. إرسال رسالة
         async function sendMsg() {
             const input = document.getElementById('msgInput');
-            if(!input.value || !selectedUser) return;
+            const val = input.value.trim();
+            if(!val || !selectedUser) return;
 
-            const msg = {
-                sender: currentUser.username,
-                receiver: selectedUser,
-                content: input.value
-            };
-
-            await supabaseClient.from('messages').insert([msg]);
+            const newMsg = { sender: currentUser.username, receiver: selectedUser, content: val };
+            
+            // إظهار الرسالة فوراً في واجهة المرسل (Optimistic UI)
+            appendMsg(newMsg); 
             input.value = '';
+
+            await supabase.from('messages').insert([newMsg]);
         }
 
-        function renderMessage(msg) {
+        // 5. الاستماع اللحظي (Realtime)
+        function listenToMessages() {
+            supabase.channel('chat_channel')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                const msg = payload.new;
+                // إظهار الرسالة فقط إذا كانت تخص المحادثة المفتوحة حالياً ولست أنا المرسل (لأنني أضفتها مسبقاً)
+                if (msg.receiver === currentUser.username && msg.sender === selectedUser) {
+                    appendMsg(msg);
+                }
+            })
+            .subscribe();
+        }
+
+        function appendMsg(msg) {
             const box = document.getElementById('msgBox');
-            const type = msg.sender === currentUser.username ? 'sent' : 'received';
-            box.innerHTML += `<div class="bubble ${type}">${msg.content}</div>`;
+            const isMe = msg.sender === currentUser.username;
+            const div = document.createElement('div');
+            div.className = `msg ${isMe ? 'sent' : 'received'}`;
+            div.innerText = msg.content;
+            box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
 
-        // الاستماع للرسائل الجديدة (Realtime)
-        function subscribeToMessages() {
-            supabaseClient
-                .channel('any')
-                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-                    const newMsg = payload.new;
-                    if( (newMsg.sender === selectedUser && newMsg.receiver === currentUser.username) || 
-                        (newMsg.sender === currentUser.username && newMsg.receiver === selectedUser) ) {
-                        renderMessage(newMsg);
-                    }
-                })
-                .subscribe();
-        }
-
-        // 5. نظام الدفع Pi
+        // 6. نظام الدفع المطور
         async function payPi() {
-            if(!selectedUser) return alert("اختر مستخدماً أولاً");
-            
+            const amount = document.getElementById('piAmount').value;
+            if(!selectedUser) return;
+
             try {
                 const payment = await Pi.createPayment({
-                    amount: 1.0,
-                    memo: `تحويل من ${currentUser.username} إلى ${selectedUser}`,
-                    metadata: { to: selectedUser }
+                    amount: parseFloat(amount),
+                    memo: `تحويل إلى ${selectedUser}`,
+                    metadata: { recipient: selectedUser }
                 }, {
-                    onReadyForServerApproval: (id) => fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({id}) }),
-                    onReadyForServerCompletion: (id, txid) => fetch('/api/pi/complete', { method: 'POST', body: JSON.stringify({id, txid}) }),
-                    onCancel: (id) => {},
-                    onError: (err) => alert("خطأ دفع: " + err.message)
+                    onReadyForServerApproval: (id) => {
+                        console.log("الطلب ينتظر موافقة السيرفر:", id);
+                        // أرسل الـ id إلى netlify function الخاصة بك هنا
+                    },
+                    onReadyForServerCompletion: (id, txid) => {
+                        console.log("تم الدفع بنجاح!", txid);
+                        alert(`تم إرسال ${amount} Pi بنجاح!`);
+                    },
+                    onCancel: (id) => console.log("تم إلغاء الدفع"),
+                    onError: (err) => alert("خطأ في الدفع: " + err.message)
                 });
-            } catch (e) { console.error(e); }
-        }
-
-        // تحسينات الواجهة
-        function toggleSidebar(show) {
-            const sb = document.getElementById('sidebar');
-            const bb = document.getElementById('backBtn');
-            if(show) {
-                sb.classList.remove('hidden');
-                bb.style.display = 'none';
-            } else {
-                sb.classList.add('hidden');
-                bb.style.display = 'block';
-            }
-        }
-
-        function filterUsers() {
-            const query = document.getElementById('userSearch').value.toLowerCase();
-            const cards = document.querySelectorAll('.user-card');
-            cards.forEach(card => {
-                const name = card.innerText.toLowerCase();
-                card.style.display = name.includes(query) ? 'flex' : 'none';
-            });
+            } catch (e) { alert("حدث خطأ: " + e.message); }
         }
     </script>
 </body>
