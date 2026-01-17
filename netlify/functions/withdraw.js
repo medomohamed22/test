@@ -1,24 +1,13 @@
-// netlify/functions/withdraw.js
-const fetch = require('node-fetch');
-
 exports.handler = async (event) => {
-  // منع أي طلب ليس POST
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  const { amount, walletAddress, userId } = JSON.parse(event.body);
-
-  // التحقق من البيانات المطلوبة
-  if (!amount || !walletAddress) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'بيانات ناقصة' }) };
-  }
-
+  const { amount, userId } = JSON.parse(event.body);
   const PI_SECRET_KEY = process.env.PI_SECRET_KEY;
   const PI_API_BASE = 'https://api.minepi.com/v2';
 
   try {
-    // 1. إنشاء طلب دفع من التطبيق للمستخدم
     const response = await fetch(`${PI_API_BASE}/payments`, {
       method: 'POST',
       headers: {
@@ -30,7 +19,7 @@ exports.handler = async (event) => {
           amount: parseFloat(amount),
           memo: "Withdrawal from App",
           metadata: { userId: userId },
-          uid: userId // معرف المستخدم في شبكة Pi
+          uid: userId 
         }
       }),
     });
@@ -40,7 +29,7 @@ exports.handler = async (event) => {
     if (response.ok) {
       return { 
         statusCode: 200, 
-        body: JSON.stringify({ success: true, message: 'تم تحويل المبلغ بنجاح', data: paymentData }) 
+        body: JSON.stringify({ success: true, data: paymentData }) 
       };
     } else {
       return { 
