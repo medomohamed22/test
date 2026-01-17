@@ -3,34 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pi Messenger Pro</title>
+    <title>نسخة تجربة الخصائص</title>
     
-    <script src="https://sdk.minepi.com/pi-sdk.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
     <style>
         :root { --primary: #6a1b9a; --accent: #ffa000; --bg: #f4f7f6; --sent: #dcf8c6; }
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-        
-        body { background: var(--bg); height: 100vh; overflow: hidden; display: flex; }
+        body { background: var(--bg); height: 100vh; display: flex; overflow: hidden; }
 
-        /* واجهة تسجيل الدخول */
-        #auth-overlay {
-            position: fixed; inset: 0; background: linear-gradient(135deg, var(--primary), #4a148c);
+        /* واجهة الدخول التجريبية */
+        #test-login {
+            position: fixed; inset: 0; background: var(--primary);
             display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10000; color: white;
         }
 
-        .btn-login {
-            background: var(--accent); color: white; border: none; padding: 15px 35px;
-            border-radius: 30px; font-size: 1.2rem; cursor: pointer; font-weight: bold;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: 0.3s;
-        }
+        .input-test { padding: 12px; border-radius: 10px; border: none; margin-bottom: 10px; width: 250px; text-align: center; }
 
         /* التطبيق الرئيسي */
         .app-container { display: none; width: 100%; height: 100vh; }
-
-        .sidebar { width: 350px; background: white; border-left: 1px solid #ddd; display: flex; flex-direction: column; }
+        .sidebar { width: 320px; background: white; border-left: 1px solid #ddd; display: flex; flex-direction: column; }
         .wallet-box { background: #fff3e0; margin: 15px; padding: 15px; border-radius: 12px; border: 1px solid #ffe0b2; }
 
         .chat-main { flex: 1; display: flex; flex-direction: column; background: #e5ddd5; }
@@ -44,37 +37,35 @@
         .input-bar { padding: 15px; background: #f0f0f0; display: flex; gap: 10px; }
         .input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; outline: none; }
 
-        /* المودال */
         #withdraw-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 11000; align-items: center; justify-content: center; }
         .modal-content { background: white; padding: 25px; border-radius: 15px; width: 90%; max-width: 400px; text-align: right; }
-
-        @media (max-width: 768px) { .sidebar { display: none; } }
+        .btn-style { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="auth-overlay">
-        <i class="fab fa-pi" style="font-size: 4rem; margin-bottom: 20px;"></i>
-        <h2 style="margin-bottom: 25px;">Pi Messenger Pro</h2>
-        <button class="btn-login" onclick="loginWithPi()">تسجيل الدخول باستخدام Pi</button>
-        <p style="margin-top: 15px; font-size: 0.9rem; opacity: 0.8;">اضغط على الزر للبدء</p>
+    <div id="test-login">
+        <h2>واجهة التجربة</h2>
+        <p style="margin-bottom: 20px;">ادخل أي اسم مستخدم للتجربة</p>
+        <input type="text" id="test-user" class="input-test" placeholder="اسمك">
+        <button class="btn-style" onclick="startTesting()">دخول التجربة</button>
     </div>
 
     <div id="withdraw-modal">
         <div class="modal-content">
-            <h3>سحب الرصيد</h3>
+            <h3>سحب الرصيد (تجربة)</h3>
             <input type="number" id="w-amount" placeholder="الكمية" style="width:100%; padding:10px; margin:10px 0;">
-            <input type="text" id="w-address" placeholder="عنوان محفظة Pi" style="width:100%; padding:10px; margin-bottom:15px;">
-            <button class="btn-login" style="width:100%; border-radius: 10px;" onclick="requestWithdraw()">إرسال طلب السحب</button>
-            <button onclick="document.getElementById('withdraw-modal').style.display='none'" style="width:100%; background:none; border:none; color:#666; margin-top:10px; cursor:pointer;">إلغاء</button>
+            <input type="text" id="w-address" placeholder="عنوان المحفظة" style="width:100%; padding:10px; margin-bottom:15px;">
+            <button class="btn-style" style="width:100%;" onclick="requestWithdraw()">إرسال طلب السحب</button>
+            <button onclick="document.getElementById('withdraw-modal').style.display='none'" style="width:100%; background:none; border:none; margin-top:10px;">إلغاء</button>
         </div>
     </div>
 
     <div class="app-container" id="app">
         <aside class="sidebar">
-            <div style="padding:20px; background:var(--primary); color:white;"><h3>المحادثات</h3></div>
+            <div style="padding:20px; background:var(--primary); color:white;"><h3>المحادثات التجريبية</h3></div>
             <div class="wallet-box">
-                <p>رصيدك الحالي: <strong id="user-balance">0</strong> Pi</p>
+                <p>رصيدك: <strong id="user-balance">0</strong> Pi</p>
                 <button onclick="document.getElementById('withdraw-modal').style.display='flex'" style="color:var(--primary); background:none; border:none; cursor:pointer; font-weight:bold; margin-top:5px;">سحب الرصيد ←</button>
             </div>
             <div id="user-list" style="flex:1; overflow-y:auto;"></div>
@@ -83,7 +74,7 @@
         <main class="chat-main">
             <header class="chat-header">
                 <h4 id="chat-with">اختر مستخدماً</h4>
-                <button id="pay-button" class="btn-login" style="display:none; padding:8px 15px; font-size:0.9rem;" onclick="processPayment()">إرسال 1 Pi</button>
+                <button id="pay-button" class="btn-style" style="display:none; font-size:0.8rem;" onclick="simulatePayment()">إرسال 1 Pi (محاكاة)</button>
             </header>
             <div class="messages" id="msg-box"></div>
             <div class="input-bar">
@@ -97,32 +88,26 @@
         const SB_KEY = "sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS";
         const supabase = supabase.createClient(SB_URL, SB_KEY);
 
-        const Pi = window.Pi;
-        Pi.init({ version: "2.0", sandbox: false });
-
-        let me = null;
+        let me = { username: "" };
         let activeChat = null;
 
-        // --- وظيفة تسجيل الدخول العادية عبر الزر ---
-        async function loginWithPi() {
-            try {
-                const auth = await Pi.authenticate(['username', 'payments'], (payment) => {});
-                me = auth.user;
-                
-                // حفظ المستخدم وجلب رصيده
-                const { data } = await supabase.from('users').upsert({
-                    username: me.username, pi_id: me.uid, last_seen: new Date().toISOString()
-                }, { onConflict: 'username' }).select().single();
+        // وظيفة الدخول التجريبية
+        async function startTesting() {
+            const name = document.getElementById('test-user').value;
+            if(!name) return alert("اكتب اسمك");
+            me.username = name;
 
-                document.getElementById('user-balance').innerText = data.balance || 0;
-                document.getElementById('auth-overlay').style.display = 'none';
-                document.getElementById('app').style.display = 'flex';
-                
-                loadUsers();
-                listenToMessages();
-            } catch (err) {
-                alert("خطأ: " + err.message + "\nتأكد أنك داخل Pi Browser");
-            }
+            // تسجيل في Supabase أو جلب البيانات
+            const { data } = await supabase.from('users').upsert({
+                username: me.username, last_seen: new Date().toISOString()
+            }, { onConflict: 'username' }).select().single();
+
+            document.getElementById('user-balance').innerText = data.balance || 0;
+            document.getElementById('test-login').style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+            
+            loadUsers();
+            listenToMessages();
         }
 
         async function loadUsers() {
@@ -167,25 +152,14 @@
             await supabase.from('messages').insert([msg]);
         }
 
-        // --- نظام الدفع القياسي ---
-        async function processPayment() {
-            try {
-                await Pi.createPayment({
-                    amount: 1.0,
-                    memo: `شحن رصيد لـ ${activeChat}`,
-                    metadata: { to: activeChat }
-                }, {
-                    onReadyForServerApproval: (id) => fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({ paymentId: id }) }),
-                    onReadyForServerCompletion: async (id, txid) => {
-                        await supabase.rpc('increment_balance', { user_name: activeChat, amount: 1.0 });
-                        alert("تم الدفع بنجاح وتسجيل الرصيد للمستلم!");
-                    },
-                    onError: (e) => alert("خطأ في الدفع: " + e.message)
-                });
-            } catch (e) { console.error(e); }
+        // محاكاة الدفع للتجربة
+        async function simulatePayment() {
+            alert("محاكاة: يتم الآن إرسال 1 Pi من رصيدك إلى " + activeChat);
+            // في النسخة الحقيقية هنا يتم استدعاء Pi SDK
+            await supabase.rpc('increment_balance', { user_name: activeChat, amount: 1.0 });
+            alert("تم تحديث رصيد المستلم في قاعدة البيانات بنجاح!");
         }
 
-        // --- نظام السحب ---
         async function requestWithdraw() {
             const amount = parseFloat(document.getElementById('w-amount').value);
             const addr = document.getElementById('w-address').value;
@@ -196,7 +170,7 @@
             await supabase.from('withdrawals').insert([{ username: me.username, amount, wallet_address: addr }]);
             await supabase.from('users').update({ balance: balance - amount }).eq('username', me.username);
             
-            alert("تم إرسال الطلب، سيتم التحويل خلال 7 أيام.");
+            alert("تم تسجيل الطلب في قاعدة البيانات!");
             location.reload();
         }
 
