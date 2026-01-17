@@ -3,162 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pi Payment App</title>
+    <title>تطبيق دفع Pi Network</title>
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
     
     <style>
         :root {
-            --primary: #673ab7;
-            --accent: #ffa000;
-            --bg: #f4f4f9;
+            --pi-color: #673ab7;
+            --pi-gold: #ffa000;
+            --bg-color: #f0f2f5;
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background-color: var(--bg);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            margin: 0;
+            height: 100vh;
             direction: rtl;
         }
 
-        .container {
+        .card {
             background: white;
-            padding: 25px;
+            padding: 30px;
             border-radius: 20px;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
             width: 90%;
             max-width: 400px;
             text-align: center;
         }
 
-        .status-box {
-            background: #f0ebf8;
+        h2 { color: var(--pi-color); margin-bottom: 20px; }
+
+        .user-section {
+            background: #f8f0ff;
             padding: 15px;
             border-radius: 12px;
             margin-bottom: 20px;
             border: 1px solid #d1c4e9;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .btn {
             display: block;
             width: 100%;
-            padding: 14px;
+            padding: 15px;
             margin: 10px 0;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: 0.2s linear;
+            transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
-        .btn-pay {
-            background-color: var(--primary);
-            color: white;
-        }
-
-        .btn-pay:disabled { background-color: #aaa; }
+        .btn-pay { background-color: var(--pi-color); color: white; }
+        .btn-pay:disabled { background-color: #ccc; cursor: not-allowed; }
 
         .btn-withdraw {
             background-color: white;
-            color: var(--accent);
-            border: 2px solid var(--accent);
+            color: var(--pi-gold);
+            border: 2px solid var(--pi-gold);
         }
 
-        #log {
+        .btn:active { transform: scale(0.98); }
+
+        #status-log {
             margin-top: 15px;
             font-size: 13px;
             color: #555;
-            min-height: 20px;
+            padding: 10px;
         }
 
-        .success { color: green; font-weight: bold; }
-        .error { color: red; font-weight: bold; }
+        .loading-dots:after {
+            content: '.';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60% { content: '...'; }
+            80%, 100% { content: ''; }
+        }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h2>بوابة Pi Network</h2>
+    <div class="card">
+        <h2>منصة Pi الرقمية</h2>
         
-        <div class="status-box">
-            <div id="user-loading">جاري التحقق من الهوية...</div>
+        <div class="user-section">
+            <div id="auth-status" class="loading-dots">جاري الاتصال بـ Pi Network</div>
             <div id="user-info" style="display: none;">
-                <p>مرحباً بك: <strong id="username">--</strong></p>
-                <p style="font-size: 12px; color: #666;">UID: <span id="uid">--</span></p>
+                <p>مرحباً: <strong id="username"></strong></p>
+                <p style="font-size: 11px; color: #888;">ID: <span id="user-uid"></span></p>
             </div>
         </div>
 
-        <button id="btn-pay" class="btn btn-pay" disabled>إيداع (User to App)</button>
-        <button id="btn-withdraw" class="btn btn-withdraw" disabled>سحب (App to User)</button>
+        <button id="btn-pay" class="btn btn-pay" disabled>إرسال 1 Pi للتطبيق</button>
+        <button id="btn-withdraw" class="btn btn-withdraw" disabled>سحب Pi إلى محفظتي</button>
 
-        <div id="log"></div>
+        <div id="status-log"></div>
     </div>
 
     <script>
         const Pi = window.Pi;
         let currentUser = null;
 
-        // تهيئة الـ SDK - تأكد من تغيير sandbox لـ false عند النشر الحقيقي
+        // 1. تهيئة الـ SDK
+        // ملاحظة: sandbox: true للشبكة التجريبية، sandbox: false للشبكة الحقيقية
         Pi.init({ version: "2.0", sandbox: false });
 
-        // 1. تسجيل الدخول
-        async function auth() {
+        // 2. دالة تسجيل الدخول المحسنة
+        async function authenticate() {
             try {
                 const scopes = ['username', 'payments', 'wallet_address'];
-                currentUser = await Pi.authenticate(scopes, onIncompletePaymentFound);
                 
-                document.getElementById('user-loading').style.display = 'none';
+                // بدء عملية المصادقة
+                const user = await Pi.authenticate(scopes, onIncompletePaymentFound);
+                
+                currentUser = user;
+                
+                // تحديث الواجهة
+                document.getElementById('auth-status').style.display = 'none';
                 document.getElementById('user-info').style.display = 'block';
-                document.getElementById('username').innerText = currentUser.user.username;
-                document.getElementById('uid').innerText = currentUser.user.uid;
+                document.getElementById('username').innerText = user.user.username;
+                document.getElementById('user-uid').innerText = user.user.uid;
                 
+                // تفعيل الأزرار
                 document.getElementById('btn-pay').disabled = false;
                 document.getElementById('btn-withdraw').disabled = false;
-                updateLog("تم الاتصال بنجاح", "success");
+                
+                log("تم تسجيل الدخول بنجاح ✅", "#2e7d32");
             } catch (err) {
-                updateLog("فشل تسجيل الدخول. افتح التطبيق من Pi Browser", "error");
+                console.error(err);
+                log("فشل تسجيل الدخول: تأكد من فتح الرابط داخل Pi Browser", "#c62828");
+                document.getElementById('auth-status').innerText = "خطأ في الاتصال ❌";
             }
         }
 
-        // 2. معالجة المدفوعات غير المكتملة
+        // معالجة المدفوعات المعلقة
         function onIncompletePaymentFound(payment) {
-            updateLog("توجد عملية دفع معلقة...");
+            log("توجد عملية دفع غير مكتملة، جاري الفحص...");
         }
 
-        // 3. وظيفة الدفع (User to App)
-        async function handlePay() {
-            updateLog("بدء عملية الدفع...");
+        // 3. وظيفة الدفع (User-to-App)
+        async function handlePayment() {
+            log("جاري إنشاء المعاملة...");
+            
             Pi.createPayment({
                 amount: 1.0,
-                memo: "إيداع رصيد",
-                metadata: { type: "deposit" }
+                memo: "شراء رصيد داخل التطبيق",
+                metadata: { orderId: "101" }
             }, {
-                onReadyForServerApproval: (paymentId) => {
+                onReadyForServerApproval: async (paymentId) => {
+                    log("بانتظار موافقة السيرفر...");
                     return fetch('/api/pi/approve', {
                         method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ paymentId })
                     });
                 },
-                onReadyForServerCompletion: (paymentId, txid) => {
+                onReadyForServerCompletion: async (paymentId, txid) => {
+                    log("جاري إنهاء المعاملة...");
                     return fetch('/api/pi/complete', {
                         method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ paymentId, txid })
-                    }).then(() => updateLog("✅ تم الإيداع بنجاح", "success"));
+                    }).then(() => log("✅ تمت عملية الدفع بنجاح!", "#2e7d32"));
                 },
-                onCancel: () => updateLog("تم إلغاء العملية"),
-                onError: (err) => updateLog("خطأ: " + err.message, "error")
+                onCancel: () => log("تم إلغاء العملية ⚠️"),
+                onError: (error) => log("خطأ في الدفع: " + error.message, "#c62828")
             });
         }
 
-        // 4. وظيفة السحب (App to User) - تستخدم الـ Seed من السيرفر
+        // 4. وظيفة السحب (App-to-User)
         async function handleWithdraw() {
-            updateLog("جاري معالجة طلب السحب من السيرفر...");
+            if (!currentUser) return;
+            
+            log("جاري طلب السحب من السيرفر...");
+            
             try {
                 const response = await fetch('/api/pi/withdraw', {
                     method: 'POST',
@@ -170,29 +199,31 @@
                 });
 
                 const result = await response.json();
+                
                 if (response.ok) {
-                    updateLog("✅ تمت عملية السحب بنجاح!", "success");
-                    alert("نجاح! يمكنك فحص محفظتك الآن.");
+                    log("✅ تم السحب بنجاح إلى محفظتك!", "#2e7d32");
                 } else {
-                    updateLog("❌ فشل السحب: " + (result.error?.message || "خطأ داخلي"), "error");
+                    log("❌ فشل السحب: " + (result.error?.message || "رصيد التطبيق غير كافٍ"), "#c62828");
                 }
             } catch (err) {
-                updateLog("فشل الاتصال بالسيرفر. تأكد من إعدادات Netlify", "error");
+                log("فشل الاتصال بالسيرفر ⚠️", "#c62828");
             }
         }
 
-        function updateLog(msg, className = "") {
-            const logDiv = document.getElementById('log');
-            logDiv.innerText = msg;
-            logDiv.className = className;
+        // دالة المساعدة للرسائل
+        function log(msg, color = "#555") {
+            const el = document.getElementById('status-log');
+            el.innerText = msg;
+            el.style.color = color;
         }
 
-        // ربط الأزرار
-        document.getElementById('btn-pay').onclick = handlePay;
+        // ربط الأحداث
+        document.getElementById('btn-pay').onclick = handlePayment;
         document.getElementById('btn-withdraw').onclick = handleWithdraw;
 
-        // بدء المصادقة
-        auth();
+        // تشغيل المصادقة تلقائياً عند التحميل
+        window.onload = authenticate;
+
     </script>
 </body>
 </html>
