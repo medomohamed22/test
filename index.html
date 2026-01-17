@@ -3,72 +3,218 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pi Manual App-to-User</title>
+    <title>Pi Payment System</title>
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+    
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #2a0a4d; color: white; margin: 0; }
-        .card { background: #fff; color: #333; padding: 2rem; border-radius: 15px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); text-align: center; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; text-align: center; font-size: 14px; }
-        button { background: #ffa500; color: white; border: none; padding: 15px 25px; border-radius: 8px; cursor: pointer; font-size: 18px; font-weight: bold; width: 100%; transition: 0.3s; }
-        button:hover { background: #e69500; }
-        #status { margin-top: 20px; font-weight: bold; font-size: 14px; color: #673ab7; }
+        :root {
+            --pi-purple: #673ab7;
+            --pi-gold: #ffa000;
+            --bg-color: #f8f9fa;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .header h1 { color: var(--pi-purple); margin-bottom: 5px; }
+        .header p { color: #666; font-size: 14px; margin-top: 0; }
+
+        .user-card {
+            background: #f0ebf8;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border: 1px solid #d1c4e9;
+        }
+
+        .balance-info {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--pi-purple);
+            margin: 10px 0;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .btn-pay {
+            background-color: var(--pi-purple);
+            color: white;
+        }
+
+        .btn-pay:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        .btn-withdraw {
+            background-color: white;
+            color: var(--pi-gold);
+            border: 2px solid var(--pi-gold);
+        }
+
+        .btn-withdraw:hover { background-color: #fff8e1; }
+
+        #status-message {
+            margin-top: 15px;
+            font-size: 13px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .success { color: #2e7d32; background: #e8f5e9; }
+        .error { color: #c62828; background: #ffebee; }
+        .info { color: #1565c0; background: #e3f2fd; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2 style="color: #673ab7;">لوحة تحويل المطور</h2>
-    <p>أدخل عنوان محفظة المستخدم للتحويل</p>
-    
-    <input type="text" id="wallet-address" placeholder="GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX">
-    <input type="number" id="amount" placeholder="الكمية (Pi)" value="1">
-    
-    <button id="send-btn">إرسال من التطبيق للمستخدم</button>
-    
-    <div id="status">في انتظار البيانات...</div>
-</div>
+    <div class="container">
+        <div class="header">
+            <h1>Pi Wallet App</h1>
+            <p>نظام الدفع والسحب المتكامل</p>
+        </div>
 
-<script>
-    const Pi = window.Pi;
-    Pi.init({ version: "2.0", sandbox: false });
+        <div id="auth-section">
+            <div class="user-card">
+                <div id="loading">جاري فحص الهوية...</div>
+                <div id="user-info" style="display: none;">
+                    <span>مرحباً: </span><strong id="username">--</strong>
+                    <div class="balance-info">الرصيد الافتراضي: <span id="balance">10.00</span> Pi</div>
+                </div>
+            </div>
+        </div>
 
-    async function sendAppToUser() {
-        const wallet = document.getElementById('wallet-address').value;
-        const amount = document.getElementById('amount').value;
-        const statusDiv = document.getElementById('status');
+        <button id="btn-pay" class="btn btn-pay" disabled>دفع 1 Pi للتطبيق</button>
+        <button id="btn-withdraw" class="btn btn-withdraw" disabled>سحب 1 Pi إلى محفظتي</button>
 
-        if (!wallet || wallet.length < 50) {
-            alert("يرجى إدخال عنوان محفظة صحيح");
-            return;
-        }
+        <div id="status-message"></div>
+    </div>
 
-        statusDiv.innerText = "جاري معالجة الطلب عبر السيرفر...";
+    <script>
+        const Pi = window.Pi;
+        let currentUser = null;
 
-        try {
-            // سنقوم بإرسال البيانات للسيرفر الخاص بك (الذي سترفعه في مكان آخر لأن Netlify ثابت)
-            const response = await fetch('https://YOUR-NODEJS-SERVER.com/app-to-user', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    walletAddress: wallet,
-                    amount: amount
-                })
-            });
+        // تهيئة الـ SDK
+        Pi.init({ version: "2.0", sandbox: false });
 
-            const result = await response.json();
-            if (result.success) {
-                statusDiv.style.color = "green";
-                statusDiv.innerText = "✅ تم التحويل بنجاح!";
-            } else {
-                statusDiv.style.color = "red";
-                statusDiv.innerText = "❌ فشل: " + result.error;
+        // 1. وظيفة المصادقة
+        async function login() {
+            try {
+                const scopes = ['username', 'payments', 'wallet_address'];
+                currentUser = await Pi.authenticate(scopes, onIncompletePaymentFound);
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('user-info').style.display = 'block';
+                document.getElementById('username').innerText = currentUser.user.username;
+                
+                // تفعيل الأزرار
+                document.getElementById('btn-pay').disabled = false;
+                document.getElementById('btn-withdraw').disabled = false;
+                
+                showStatus("تم تسجيل الدخول بنجاح", "info");
+            } catch (err) {
+                showStatus("يرجى فتح التطبيق من داخل Pi Browser", "error");
             }
-        } catch (error) {
-            statusDiv.innerText = "خطأ في الاتصال بالسيرفر";
         }
-    }
 
-    document.getElementById('send-btn').onclick = sendAppToUser;
-</script>
+        // 2. معالجة المدفوعات غير المكتملة (مطلوب من Pi)
+        function onIncompletePaymentFound(payment) {
+            console.log("وجدنا عملية معلقة:", payment);
+        }
+
+        // 3. عملية الدفع (من المستخدم للتطبيق User-to-App)
+        async function startPayment() {
+            showStatus("جاري فتح المحفظة...", "info");
+            
+            Pi.createPayment({
+                amount: 1.0,
+                memo: "شراء خدمات رقمية",
+                metadata: { type: "deposit" }
+            }, {
+                onReadyForServerApproval: (paymentId) => {
+                    return fetch('/api/pi/approve', {
+                        method: 'POST',
+                        body: JSON.stringify({ paymentId })
+                    });
+                },
+                onReadyForServerCompletion: (paymentId, txid) => {
+                    return fetch('/api/pi/complete', {
+                        method: 'POST',
+                        body: JSON.stringify({ paymentId, txid })
+                    }).then(() => {
+                        showStatus("✅ تم استلام المبلغ بنجاح!", "success");
+                    });
+                },
+                onCancel: (paymentId) => showStatus("تم إلغاء العملية", "info"),
+                onError: (error) => showStatus("خطأ: " + error.message, "error")
+            });
+        }
+
+        // 4. عملية السحب (من التطبيق للمستخدم App-to-User)
+        async function startWithdraw() {
+            showStatus("جاري إرسال الطلب للسيرفر...", "info");
+
+            try {
+                const response = await fetch('/api/pi/withdraw', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        amount: 1.0,
+                        userId: currentUser.user.uid, // المعرف الفريد للمستخدم
+                        walletAddress: "" // اختياري حسب إعدادات السيرفر لديك
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatus("✅ تم تحويل 1 Pi إلى محفظتك!", "success");
+                } else {
+                    showStatus("❌ فشل السحب: " + (result.error.message || "خطأ داخلي"), "error");
+                }
+            } catch (err) {
+                showStatus("فشل الاتصال بالسيرفر", "error");
+            }
+        }
+
+        // دالة مساعدة لإظهار الرسائل
+        function showStatus(msg, type) {
+            const el = document.getElementById('status-message');
+            el.innerText = msg;
+            el.className = type;
+        }
+
+        // ربط الأحداث بالأزرار
+        document.getElementById('btn-pay').onclick = startPayment;
+        document.getElementById('btn-withdraw').onclick = startWithdraw;
+
+        // تنفيذ الدخول عند تحميل الصفحة
+        login();
+    </script>
 </body>
 </html>
