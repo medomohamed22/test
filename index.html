@@ -1,283 +1,206 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pi City Life RPG</title>
-    
-    <script src="https://sdk.minepi.com/pi-sdk.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pi City Life RPG</title>
 
-    <style>
-        :root {
-            --primary: #6b3484; /* لون Pi المميز */
-            --gold: #fbce27;
-            --bg: #121212;
-            --panel: rgba(30, 30, 30, 0.9);
-        }
-        
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: white; }
-        
-        /* واجهة التحميل */
-        #login-screen {
-            position: fixed; inset: 0; z-index: 999;
-            background: linear-gradient(135deg, #2c0b36, #000);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-        }
-        
-        .btn-start {
-            background: var(--gold); color: #000; border: none; padding: 15px 40px;
-            font-size: 1.2rem; border-radius: 50px; cursor: pointer; font-weight: bold;
-            box-shadow: 0 0 20px rgba(251, 206, 39, 0.5); transition: 0.3s;
-        }
-        .btn-start:hover { transform: scale(1.1); }
+<script src="https://sdk.minepi.com/pi-sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-        /* واجهة اللعبة (HUD) */
-        #ui-layer {
-            position: absolute; top: 0; left: 0; right: 0; padding: 15px;
-            display: flex; justify-content: space-between; pointer-events: none;
-        }
-        
-        .hud-box {
-            background: var(--panel); padding: 10px 20px; border-radius: 12px;
-            border: 1px solid var(--primary); pointer-events: auto;
-            display: flex; gap: 15px; align-items: center;
-        }
+<style>
+:root {
+  --primary:#6b3484;
+  --gold:#fbce27;
+  --bg:#121212;
+  --panel:rgba(30,30,30,.9);
+}
+body{margin:0;overflow:hidden;background:var(--bg);color:#fff;font-family:Segoe UI}
 
-        /* أزرار التحكم */
-        #controls {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 10px; pointer-events: auto;
-        }
-        
-        .action-btn {
-            background: #333; color: white; border: 1px solid #555;
-            padding: 10px 20px; border-radius: 8px; cursor: pointer;
-        }
-        .btn-buy { background: var(--primary); border-color: var(--gold); }
+#login-screen{
+  position:fixed;inset:0;z-index:999;
+  background:linear-gradient(135deg,#2c0b36,#000);
+  display:flex;flex-direction:column;justify-content:center;align-items:center
+}
+.btn-start{
+  background:var(--gold);color:#000;border:0;
+  padding:15px 40px;font-size:1.2rem;border-radius:50px;
+  cursor:pointer;font-weight:bold;
+}
+.hidden{display:none}
 
-        canvas { display: block; }
-        .hidden { display: none !important; }
-    </style>
+#ui-layer{
+  position:absolute;top:0;left:0;right:0;padding:15px;
+  display:flex;justify-content:space-between;pointer-events:none
+}
+.hud-box{
+  background:var(--panel);padding:10px 20px;border-radius:12px;
+  border:1px solid var(--primary);pointer-events:auto
+}
+#controls{
+  position:absolute;bottom:20px;left:50%;
+  transform:translateX(-50%);
+  display:flex;gap:10px
+}
+.action-btn{
+  background:#333;color:#fff;border:1px solid #555;
+  padding:10px 20px;border-radius:8px;cursor:pointer
+}
+.btn-buy{background:var(--primary);border-color:var(--gold)}
+canvas{display:block}
+</style>
 </head>
+
 <body>
 
-    <div id="login-screen">
-        <h1 style="color: var(--gold); font-size: 2.5rem;">Pi Life RPG</h1>
-        <p>عالمك الافتراضي المربوط بـ Pi Network</p>
-        <br>
-        <button class="btn-start" onclick="login()">ابدأ رحلتك</button>
-    </div>
+<div id="login-screen">
+  <h1 style="color:var(--gold)">Pi Life RPG</h1>
+  <p>عالمك الافتراضي المربوط بـ Pi Network</p>
+  <button class="btn-start" onclick="login()">ابدأ رحلتك</button>
+</div>
 
-    <div id="ui-layer" class="hidden">
-        <div class="hud-box">
-            <span>👤 <b id="ui-name">...</b></span>
-            <span>⭐ Lvl: <b id="ui-lvl">1</b></span>
-        </div>
-        <div class="hud-box">
-            <span>💰 <b id="ui-assets">0</b> عقارات</span>
-        </div>
-    </div>
+<div id="ui-layer" class="hidden">
+  <div class="hud-box">
+    👤 <b id="ui-name">...</b> | ⭐ Lvl <b id="ui-lvl">1</b>
+  </div>
+  <div class="hud-box">
+    🏠 <b id="ui-assets">0</b> عقارات
+  </div>
+</div>
 
-    <div id="controls" class="hidden">
-        <button class="action-btn" onclick="train()">📚 تعلم (+XP)</button>
-        <button class="action-btn btn-buy" onclick="buyHouse()">🏠 شراء منزل (1 Pi)</button>
-    </div>
+<div id="controls" class="hidden">
+  <button class="action-btn" onclick="train()">📚 تعلم</button>
+  <button class="action-btn btn-buy" onclick="buyHouse()">🏠 شراء منزل (1 Pi)</button>
+</div>
 
-    <canvas id="gameCanvas"></canvas>
+<canvas id="gameCanvas"></canvas>
 
-    <script>
-        // --- 1. الإعدادات ---
-        const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<script>
+/* ---------------- SETUP ---------------- */
+const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // تفعيل وضع Sandbox للتجربة (اجعله false عند النشر النهائي)
-        const Pi = window.Pi;
-        Pi.init({ version: "2.0", sandbox: false });
+const Pi = window.Pi;
+Pi.init({version:"2.0", sandbox:false});
 
-        let userState = null;
+let userState = null;
 
-        // --- 2. تسجيل الدخول والمزامنة ---
-        async function login() {
-            try {
-                const scopes = ['username', 'payments'];
-                const authResult = await Pi.authenticate(scopes, onIncompletePayment);
-                
-                const username = authResult.user.username;
-                console.log("Logged in as:", username);
+/* ---------------- LOGIN ---------------- */
+async function login(){
+  try{
+    const auth = await Pi.authenticate(['username','payments'], onIncompletePayment);
+    const username = auth.user.username;
 
-                // جلب أو إنشاء المستخدم في قاعدة البيانات
-                let { data, error } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('username', username)
-                    .single();
+    let { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('username', username)
+      .maybeSingle();
 
-                if (!data) {
-                    const { data: newUser } = await supabase
-                        .from('profiles')
-                        .insert([{ username: username }])
-                        .select()
-                        .single();
-                    userState = newUser;
-                } else {
-                    userState = data;
-                }
+    if(!data){
+      const { data:newUser } = await supabase
+        .from('profiles')
+        .insert([{
+          username,
+          level:1,
+          xp:0,
+          assets:[]
+        }])
+        .select()
+        .single();
+      userState = newUser;
+    }else{
+      userState = data;
+      userState.xp ??= 0;
+      userState.level ??= 1;
+      userState.assets ??= [];
+    }
 
-                // بدء اللعبة
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('ui-layer').classList.remove('hidden');
-                document.getElementById('controls').classList.remove('hidden');
-                updateUI();
-                startGameLoop();
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('ui-layer').classList.remove('hidden');
+    document.getElementById('controls').classList.remove('hidden');
+    updateUI();
+    startGameLoop();
 
-            } catch (err) {
-                alert("خطأ: يرجى فتح اللعبة من متصفح Pi Browser.");
-                console.error(err);
-            }
-        }
+  }catch(e){
+    alert("لازم تفتح اللعبة من Pi Browser");
+    console.error(e);
+  }
+}
 
-        // --- 3. نظام المدفوعات (Pi SDK Full Flow) ---
-        async function buyHouse() {
-            if(!userState) return;
+/* ---------------- GAME ---------------- */
+function train(){
+  userState.xp += 10;
+  if(userState.xp >= 100){
+    userState.level++;
+    userState.xp = 0;
+    alert("⬆️ Level Up");
+  }
+  updateUI();
+  supabase.from('profiles')
+    .update({xp:userState.xp, level:userState.level})
+    .eq('username', userState.username);
+}
 
-            const paymentData = {
-                amount: 1, // السعر 1 Pi
-                memo: "شراء منزل افتراضي - Level 1", 
-                metadata: { type: "house_asset" }
-            };
+async function buyHouse(){
+  await Pi.createPayment(
+    {amount:1, memo:"Virtual House", metadata:{type:"house"}},
+    {
+      onReadyForServerApproval:pid=>{
+        fetch('/api/pi/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paymentId:pid})});
+      },
+      onReadyForServerCompletion:async(pid,txid)=>{
+        fetch('/api/pi/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paymentId:pid,txid})});
+        userState.assets.push({type:'house'});
+        const { data } = await supabase.from('profiles')
+          .update({assets:userState.assets})
+          .eq('username', userState.username)
+          .select().single();
+        userState = data;
+        updateUI();
+        alert("🏠 تم الشراء");
+      }
+    }
+  );
+}
 
-            const callbacks = {
-                onReadyForServerApproval: async (paymentId) => {
-                    console.log("Approving:", paymentId);
-                    await fetch('/api/pi/approve', {
-                        method: 'POST',
-                        body: JSON.stringify({ paymentId })
-                    });
-                },
-                onReadyForServerCompletion: async (paymentId, txid) => {
-                    console.log("Completing:", txid);
-                    await fetch('/api/pi/complete', {
-                        method: 'POST',
-                        body: JSON.stringify({ paymentId, txid })
-                    });
-                    
-                    // تحديث قاعدة البيانات بعد الدفع الناجح
-                    const currentAssets = userState.assets || [];
-                    currentAssets.push({ type: 'house', date: new Date() });
-                    
-                    const { data } = await supabase
-                        .from('profiles')
-                        .update({ assets: currentAssets })
-                        .eq('username', userState.username)
-                        .select()
-                        .single();
-                        
-                    userState = data;
-                    updateUI();
-                    alert("🎉 مبروك! تم شراء المنزل بنجاح.");
-                },
-                onCancel: (paymentId) => { console.log("Cancelled", paymentId); },
-                onError: (error, payment) => { console.error("Error", error); }
-            };
+function onIncompletePayment(p){ console.log("Incomplete",p); }
 
-            try {
-                await Pi.createPayment(paymentData, callbacks);
-            } catch(e) {
-                console.error(e);
-            }
-        }
+function updateUI(){
+  ui-name.innerText = userState.username;
+  ui-lvl.innerText = userState.level;
+  ui-assets.innerText = userState.assets.length;
+}
 
-        function onIncompletePayment(payment) {
-            console.log("Incomplete Payment Found:", payment);
-            // منطق لمعالجة المدفوعات العالقة
-        }
+/* ---------------- CANVAS ---------------- */
+const canvas = gameCanvas;
+const ctx = canvas.getContext('2d');
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
+onresize=resize;resize();
 
-        // --- 4. منطق اللعبة (Game Logic) ---
-        async function train() {
-            // زيادة الخبرة محلياً ثم حفظها
-            userState.xp += 10;
-            if(userState.xp >= 100) {
-                userState.level += 1;
-                userState.xp = 0;
-                alert("Level Up! ⬆️");
-            }
-            updateUI();
-            
-            // الحفظ في الخلفية (Debounced in real app)
-            await supabase
-                .from('profiles')
-                .update({ xp: userState.xp, level: userState.level })
-                .eq('username', userState.username);
-        }
+let player={x:innerWidth/2,y:innerHeight/2};
 
-        function updateUI() {
-            document.getElementById('ui-name').innerText = userState.username;
-            document.getElementById('ui-lvl').innerText = userState.level;
-            document.getElementById('ui-assets').innerText = userState.assets ? userState.assets.length : 0;
-        }
+function startGameLoop(){
+  function draw(){
+    ctx.fillStyle="#121212";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.beginPath();
+    ctx.arc(player.x,player.y,25,0,Math.PI*2);
+    ctx.fillStyle="#6b3484";
+    ctx.fill();
+    ctx.strokeStyle="#fbce27";
+    ctx.lineWidth=3;
+    ctx.stroke();
+    ctx.fillStyle="#fff";
+    ctx.textAlign="center";
+    ctx.fillText(userState.username,player.x,player.y-35);
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
 
-        // --- 5. الرسوميات (Canvas Render) ---
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.onresize = resize;
-        resize();
-
-        let player = { x: window.innerWidth/2, y: window.innerHeight/2 };
-
-        function startGameLoop() {
-            function draw() {
-                // مسح الشاشة
-                ctx.fillStyle = "#121212";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                // رسم أرضية شبكية (Isometric Grid Effect)
-                ctx.strokeStyle = "#333";
-                ctx.beginPath();
-                for(let i=0; i<canvas.width; i+=50) { ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); }
-                for(let i=0; i<canvas.height; i+=50) { ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); }
-                ctx.stroke();
-
-                // رسم اللاعب
-                ctx.beginPath();
-                ctx.arc(player.x, player.y, 25, 0, Math.PI*2);
-                ctx.fillStyle = "#6b3484"; // Pi Purple
-                ctx.fill();
-                ctx.lineWidth = 3;
-                ctx.strokeStyle = "#fbce27"; // Gold border
-                ctx.stroke();
-
-                // رسم المنزل إذا اشتراه اللاعب
-                if(userState.assets && userState.assets.length > 0) {
-                    ctx.fillStyle = "#4CAF50";
-                    ctx.fillRect(player.x + 50, player.y - 50, 40, 40);
-                    ctx.fillStyle = "white";
-                    ctx.font = "10px Arial";
-                    ctx.fillText("منزلي", player.x + 55, player.y - 60);
-                }
-
-                // اسم اللاعب
-                ctx.fillStyle = "white";
-                ctx.font = "bold 14px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText(userState.username, player.x, player.y - 35);
-
-                requestAnimationFrame(draw);
-            }
-            draw();
-        }
-
-        // تحريك بسيط عند النقر
-        canvas.addEventListener('click', (e) => {
-            player.x = e.clientX;
-            player.y = e.clientY;
-        });
-    </script>
+canvas.onclick=e=>{player.x=e.clientX;player.y=e.clientY;}
+</script>
 </body>
 </html>
