@@ -3,272 +3,212 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pi Chat Pro - النسخة النهائية</title>
+    <title>Pi Escrow Chat</title>
     
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
     <style>
-        :root {
-            --primary-color: #6a1b9a;
-            --secondary-color: #4a148c;
-            --bg-light: #f4f7f6;
-            --chat-bg: #e5ddd5;
-            --white: #ffffff;
-            --my-msg: #dcf8c6;
-            --accent: #ffa000;
-        }
+        :root { --primary: #6a1b9a; --accent: #ffa000; --bg: #f4f7f6; --white: #fff; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: var(--bg); height: 100vh; display: flex; overflow: hidden; }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        /* الشاشات التراكبية */
+        #login-overlay { position: fixed; inset: 0; background: linear-gradient(135deg, var(--primary), #4a148c); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; color: white; transition: 0.5s; }
+        #withdraw-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+        
+        .modal-content { background: white; padding: 25px; border-radius: 20px; width: 90%; max-width: 400px; text-align: right; }
+        .modal-content input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 10px; border: 1px solid #ddd; }
 
-        body { background-color: var(--bg-light); height: 100vh; overflow: hidden; display: flex; }
-
-        /* شاشة تسجيل الدخول العلوية */
-        #login-overlay {
-            position: fixed; inset: 0; background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; color: white;
-            transition: opacity 0.5s ease;
-        }
-
-        .btn-login {
-            background: var(--accent); color: white; border: none; padding: 15px 40px; 
-            border-radius: 30px; font-size: 1.2rem; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            display: none; /* يظهر فقط عند الحاجة */
-        }
-
-        .loader {
-            border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid white;
-            border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-        }
-
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        /* حاوية التطبيق */
-        .app-container { display: flex; width: 100%; height: 100vh; opacity: 0.5; pointer-events: none; transition: 0.5s; }
+        /* التصميم الرئيسي */
+        .app-container { display: flex; width: 100%; height: 100vh; opacity: 0; pointer-events: none; transition: 0.5s; }
         .app-container.active { opacity: 1; pointer-events: all; }
 
-        /* القائمة الجانبية */
-        .sidebar { width: 350px; background: var(--white); border-left: 1px solid #ddd; display: flex; flex-direction: column; z-index: 20; }
-        .sidebar-header { padding: 15px; background: var(--primary-color); color: white; }
-        .search-container { padding: 10px; background: #f6f6f6; }
-        .search-container input { width: 100%; padding: 10px; border-radius: 20px; border: 1px solid #ddd; outline: none; text-align: right; }
+        .sidebar { width: 350px; background: var(--white); border-left: 1px solid #ddd; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px; background: var(--primary); color: white; }
+        
+        .wallet-card { background: #fef3c7; margin: 10px; padding: 15px; border-radius: 15px; border: 1px solid #fcd34d; }
+        .btn-withdraw { background: var(--accent); color: white; border: none; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; margin-top: 5px; }
 
-        .user-list { flex: 1; overflow-y: auto; }
-        .user-card { display: flex; align-items: center; padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s; }
-        .user-card:hover { background: #f0f0f0; }
-        .avatar { width: 45px; height: 45px; border-radius: 50%; background: #ccc; margin-left: 12px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
-
-        /* منطقة المحادثة */
-        .chat-main { flex: 1; display: flex; flex-direction: column; background: var(--chat-bg); position: relative; }
-        .chat-header { padding: 10px 20px; background: #ededed; display: flex; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); z-index: 10; }
-        .back-btn { display: none; background: none; border: none; font-size: 1.2rem; color: var(--primary-color); margin-left: 10px; }
-
+        .chat-main { flex: 1; display: flex; flex-direction: column; background: #e5ddd5; }
+        .chat-header { padding: 10px 20px; background: #ededed; display: flex; align-items: center; gap: 10px; }
+        
         .messages-area { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-        .bubble { max-width: 75%; padding: 10px 15px; border-radius: 12px; font-size: 15px; line-height: 1.4; word-wrap: break-word; }
-        .bubble.sent { align-self: flex-end; background: var(--my-msg); border-top-left-radius: 0; }
-        .bubble.received { align-self: flex-start; background: var(--white); border-top-right-radius: 0; }
+        .bubble { max-width: 75%; padding: 10px; border-radius: 10px; font-size: 14px; }
+        .bubble.sent { align-self: flex-end; background: #dcf8c6; }
+        .bubble.received { align-self: flex-start; background: #fff; }
 
-        .input-bar { padding: 10px; background: #f0f0f0; display: flex; align-items: center; gap: 10px; }
-        .input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; outline: none; }
-        .send-btn { background: var(--primary-color); color: white; border: none; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; }
-
-        @media (max-width: 768px) {
-            .sidebar { width: 100%; position: absolute; transition: 0.3s; }
-            .sidebar.hidden { transform: translateX(100%); }
-            .back-btn { display: block; }
-        }
+        .input-bar { padding: 10px; background: #f0f0f0; display: flex; gap: 10px; }
+        .input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; }
+        
+        @media (max-width: 768px) { .sidebar { width: 100%; position: absolute; z-index: 10; } .sidebar.hidden { display: none; } }
     </style>
 </head>
 <body>
 
     <div id="login-overlay">
-        <div class="loader" id="auth-loader"></div>
         <i class="fab fa-pi" style="font-size: 4rem; margin-bottom: 20px;"></i>
-        <h2>Pi Chat Messenger</h2>
-        <p id="auth-status" style="margin-bottom: 20px; opacity: 0.8;">جاري التحقق من الهوية...</p>
-        <button class="btn-login" id="login-btn" onclick="handlePiAuth()">تسجيل الدخول باستخدام Pi</button>
+        <h2 id="auth-status">جاري التحقق...</h2>
+        <button class="btn-withdraw" id="login-btn" onclick="handlePiAuth()" style="display:none; padding: 15px 30px; font-size: 1.2rem;">دخول باستخدام Pi</button>
+    </div>
+
+    <div id="withdraw-modal">
+        <div class="modal-content">
+            <h3>طلب سحب الرصيد</h3>
+            <p style="font-size: 12px; color: #666;">سيتم التحويل يدوياً خلال 7 أيام عمل.</p>
+            <input type="number" id="w-amount" placeholder="الكمية المراد سحبها">
+            <input type="text" id="w-address" placeholder="عنوان محفظة Pi">
+            <button class="btn-withdraw" style="width: 100%; padding: 12px;" onclick="submitWithdraw()">تأكيد الطلب</button>
+            <button onclick="closeModal()" style="width: 100%; background: none; border: none; color: #888; margin-top: 10px;">إلغاء</button>
+        </div>
     </div>
 
     <div class="app-container" id="app-box">
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header"><h3>المحادثات</h3></div>
-            <div class="search-container">
-                <input type="text" id="userSearch" placeholder="بحث عن مستخدم..." onkeyup="filterUsers()">
+            
+            <div class="wallet-card">
+                <div>رصيدك المستلم: <strong id="my-balance">0</strong> Pi</div>
+                <button class="btn-withdraw" onclick="openModal()">سحب الرصيد</button>
             </div>
-            <div class="user-list" id="users"></div>
+
+            <div class="user-list" id="users" style="flex:1; overflow-y:auto;"></div>
         </aside>
 
         <main class="chat-main">
             <div class="chat-header">
-                <button class="back-btn" onclick="toggleSidebar(true)"><i class="fas fa-arrow-right"></i></button>
-                <div class="avatar" id="activeAvatar">?</div>
-                <div style="flex: 1;">
-                    <h4 id="activeUserName">اختر مستخدماً للدردشة</h4>
-                    <small id="statusText" style="color: #888;">متصل</small>
-                </div>
-                <button class="send-btn" style="background: var(--accent); width: auto; padding: 0 15px; border-radius: 10px;" onclick="payPi()">
-                    <i class="fas fa-coins"></i> دفع 1 Pi
-                </button>
+                <div style="flex: 1;"><h4 id="activeUserName">اختر مستخدماً</h4></div>
+                <button class="btn-withdraw" onclick="payPi()">إرسال 1 Pi للمستخدم</button>
             </div>
-
             <div class="messages-area" id="msgBox"></div>
-
             <div class="input-bar">
                 <input type="text" id="msgInput" placeholder="اكتب رسالة..." onkeypress="if(event.key==='Enter') sendMsg()">
-                <button class="send-btn" onclick="sendMsg()"><i class="fas fa-paper-plane"></i></button>
             </div>
         </main>
     </div>
 
     <script>
-        const SUPABASE_URL = "https://xncapmzlwuisupkjlftb.supabase.co";
-        const SUPABASE_KEY = "sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS";
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const SB_URL = "https://xncapmzlwuisupkjlftb.supabase.co";
+        const SB_KEY = "sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS";
+        const supabase = supabase.createClient(SB_URL, SB_KEY);
 
         const Pi = window.Pi;
         Pi.init({ version: "2.0", sandbox: false });
 
-        let currentUser = null;
-        let selectedUser = null;
+        let currentUser = null, selectedUser = null;
 
-        // المصادقة التلقائية عند التحميل
         window.onload = async () => {
-            const timeout = setTimeout(() => {
-                document.getElementById('auth-loader').style.display = 'none';
-                document.getElementById('login-btn').style.display = 'block';
-                document.getElementById('auth-status').innerText = "يرجى تسجيل الدخول يدوياً";
-            }, 5000);
-
             try {
-                const auth = await Pi.authenticate(['username', 'payments'], onIncompletePayment);
-                clearTimeout(timeout);
-                await proceedToApp(auth.user);
-            } catch (err) {
-                clearTimeout(timeout);
-                document.getElementById('auth-loader').style.display = 'none';
-                document.getElementById('login-btn').style.display = 'block';
+                const auth = await Pi.authenticate(['username', 'payments'], (p)=>{});
+                await proceed(auth.user);
+            } catch (e) {
+                document.getElementById('auth-status').innerText = "يرجى تسجيل الدخول";
+                document.getElementById('login-btn').style.display = "block";
             }
         };
 
         async function handlePiAuth() {
-            try {
-                const auth = await Pi.authenticate(['username', 'payments'], onIncompletePayment);
-                await proceedToApp(auth.user);
-            } catch (err) {
-                alert("فشل الدخول: افتح التطبيق داخل متصفح Pi");
-            }
+            const auth = await Pi.authenticate(['username', 'payments'], (p)=>{});
+            await proceed(auth.user);
         }
 
-        async function proceedToApp(user) {
+        async function proceed(user) {
             currentUser = user;
-            await supabaseClient.from('users').upsert({
-                username: user.username,
-                pi_id: user.uid,
-                last_seen: new Date().toISOString()
-            }, { onConflict: 'username' });
+            const { data } = await supabase.from('users').upsert({
+                username: user.username, pi_id: user.uid, last_seen: new Date().toISOString()
+            }, { onConflict: 'username' }).select().single();
 
-            document.getElementById('login-overlay').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('login-overlay').style.display = 'none';
-                document.getElementById('app-box').classList.add('active');
-            }, 500);
+            document.getElementById('my-balance').innerText = data.balance || 0;
+            document.getElementById('login-overlay').style.display = 'none';
+            document.getElementById('app-box').classList.add('active');
             
-            loadUsersList();
-            subscribeToMessages();
+            loadUsers();
+            subscribe();
         }
 
-        function onIncompletePayment(payment) {}
-
-        async function loadUsersList() {
-            const { data } = await supabaseClient.from('users').select('*').neq('username', currentUser.username);
-            const listDiv = document.getElementById('users');
-            listDiv.innerHTML = data.map(u => `
-                <div class="user-card" onclick="selectChat('${u.username}')">
-                    <div class="avatar">${u.username[0].toUpperCase()}</div>
-                    <div><strong>${u.username}</strong><br><small>نقر لبدء المحادثة</small></div>
+        async function loadUsers() {
+            const { data } = await supabase.from('users').select('*').neq('username', currentUser.username);
+            document.getElementById('users').innerHTML = data.map(u => `
+                <div style="padding:15px; border-bottom:1px solid #eee; cursor:pointer;" onclick="selectChat('${u.username}')">
+                    <strong>${u.username}</strong>
                 </div>
             `).join('');
         }
 
-        async function selectChat(username) {
-            selectedUser = username;
-            document.getElementById('activeUserName').innerText = username;
-            document.getElementById('activeAvatar').innerText = username[0].toUpperCase();
+        async function selectChat(u) {
+            selectedUser = u;
+            document.getElementById('activeUserName').innerText = u;
             document.getElementById('msgBox').innerHTML = '';
-            if(window.innerWidth < 768) toggleSidebar(false);
-
-            const { data } = await supabaseClient.from('messages')
-                .select('*')
-                .or(`and(sender.eq.${currentUser.username},receiver.eq.${username}),and(sender.eq.${username},receiver.eq.${currentUser.username})`)
+            const { data } = await supabase.from('messages').select('*')
+                .or(`and(sender.eq.${currentUser.username},receiver.eq.${u}),and(sender.eq.${u},receiver.eq.${currentUser.username})`)
                 .order('created_at', { ascending: true });
+            data.forEach(render);
+        }
 
-            if(data) data.forEach(renderMessage);
+        function render(m) {
+            const box = document.getElementById('msgBox');
+            const isMe = m.sender === currentUser.username;
+            box.innerHTML += `<div class="bubble ${isMe?'sent':'received'}">${m.content}</div>`;
+            box.scrollTop = box.scrollHeight;
         }
 
         async function sendMsg() {
             const input = document.getElementById('msgInput');
             if(!input.value || !selectedUser) return;
             const msg = { sender: currentUser.username, receiver: selectedUser, content: input.value };
-            renderMessage(msg); // عرض فوري
+            render(msg);
+            await supabase.from('messages').insert([msg]);
             input.value = '';
-            await supabaseClient.from('messages').insert([msg]);
         }
 
-        function renderMessage(msg) {
-            const box = document.getElementById('msgBox');
-            const type = msg.sender === currentUser.username ? 'sent' : 'received';
-            box.innerHTML += `<div class="bubble ${type}">${msg.content}</div>`;
-            box.scrollTop = box.scrollHeight;
-        }
-
-        function subscribeToMessages() {
-            supabaseClient.channel('realtime_msgs').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-                const n = payload.new;
-                if(n.sender === selectedUser && n.receiver === currentUser.username) renderMessage(n);
-            }).subscribe();
-        }
-
-        // --- إصلاح نظام الدفع وربطه بـ Netlify ---
+        // --- نظام الدفع الوسيط ---
         async function payPi() {
             if(!selectedUser) return alert("اختر مستخدماً أولاً");
-            
             try {
                 await Pi.createPayment({
                     amount: 1.0,
-                    memo: `إرسال Pi من ${currentUser.username} إلى ${selectedUser}`,
+                    memo: `شحن رصيد ${selectedUser} عبر التطبيق`,
                     metadata: { recipient: selectedUser }
                 }, {
-                    onReadyForServerApproval: (paymentId) => {
-                        fetch('/api/pi/approve', { 
-                            method: 'POST', 
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ paymentId }) 
-                        });
+                    onReadyForServerApproval: (paymentId) => fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({ paymentId }) }),
+                    onReadyForServerCompletion: async (paymentId, txid) => {
+                        // تحديث رصيد المستلم في قاعدة البيانات
+                        await supabase.rpc('increment_balance', { user_name: selectedUser, amount: 1.0 });
+                        alert("تم إرسال الباي لمحفظة التطبيق وتسجيل الرصيد للمستلم!");
                     },
-                    onReadyForServerCompletion: (paymentId, txid) => {
-                        fetch('/api/pi/complete', { 
-                            method: 'POST', 
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ paymentId, txid }) 
-                        }).then(() => alert("تمت عملية الدفع بنجاح!"));
-                    },
-                    onCancel: (paymentId) => console.log("Cancelled"),
-                    onError: (err) => alert("خطأ دفع: " + err.message)
+                    onError: (e) => alert(e.message)
                 });
             } catch (e) { console.error(e); }
         }
 
-        function toggleSidebar(show) {
-            document.getElementById('sidebar').classList.toggle('hidden', !show);
+        // --- نظام السحب ---
+        function openModal() { document.getElementById('withdraw-modal').style.display = 'flex'; }
+        function closeModal() { document.getElementById('withdraw-modal').style.display = 'none'; }
+
+        async function submitWithdraw() {
+            const amount = parseFloat(document.getElementById('w-amount').value);
+            const address = document.getElementById('w-address').value;
+            const currentBalance = parseFloat(document.getElementById('my-balance').innerText);
+
+            if(amount > currentBalance || amount <= 0) return alert("الرصيد غير كافٍ!");
+            if(address.length < 20) return alert("عنوان المحفظة غير صحيح!");
+
+            // خصم الرصيد وتسجيل الطلب
+            await supabase.from('withdrawals').insert([{
+                username: currentUser.username, amount, wallet_address: address
+            }]);
+            
+            await supabase.from('users').update({ balance: currentBalance - amount }).eq('username', currentUser.username);
+            
+            alert("تم تسجيل طلب السحب. يرجى الانتظار 7 أيام للمراجعة.");
+            location.reload();
         }
 
-        function filterUsers() {
-            const q = document.getElementById('userSearch').value.toLowerCase();
-            document.querySelectorAll('.user-card').forEach(c => {
-                c.style.display = c.innerText.toLowerCase().includes(q) ? 'flex' : 'none';
-            });
+        function subscribe() {
+            supabase.channel('msgs').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, p => {
+                if(p.new.sender === selectedUser && p.new.receiver === currentUser.username) render(p.new);
+            }).subscribe();
         }
     </script>
 </body>
