@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Donate Way - Donate with Pi Network</title>
+
+<script src="https://sdk.minepi.com/pi-sdk.js"></script>
+
+<style>
+body{
+    font-family:'Segoe UI',Tahoma;
+    background:linear-gradient(135deg,#f5f0ff,#e6d9ff);
+    margin:0;
+    color:#4a148c;
+}
+.container{max-width:1100px;margin:30px auto;padding:20px}
+.header{text-align:center;margin-bottom:40px}
+.logo{font-size:90px;color:#7e57c2;animation:float 3s ease-in-out infinite}
+@keyframes float{50%{transform:translateY(-10px)}}
+.campaigns{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:25px}
+.campaign-card{
+    background:#fff;
+    border-radius:24px;
+    padding:30px;
+    box-shadow:0 10px 30px rgba(126,87,194,.15);
+    text-align:center;
+}
+.icon{font-size:55px}
+.progress-container{background:#ede7f6;border-radius:50px;height:18px;margin:12px 0}
+.progress-bar{
+    background:#7e57c2;
+    height:100%;
+    width:0%;
+    color:#fff;
+    font-size:12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+.amount-btn{
+    border:2px solid #b39ddb;
+    background:#ede7f6;
+    padding:8px 16px;
+    border-radius:50px;
+    cursor:pointer;
+}
+.amount-btn.selected{background:#7e57c2;color:#fff}
+.custom-input{
+    padding:10px;
+    border-radius:50px;
+    border:2px solid #b39ddb;
+    width:160px;
+    text-align:center;
+}
+button.donate{
+    margin-top:15px;
+    background:linear-gradient(135deg,#9c27b0,#7e57c2);
+    color:#fff;
+    border:none;
+    padding:14px 30px;
+    border-radius:50px;
+    cursor:pointer;
+    width:100%;
+    font-size:16px;
+}
+.message-box{display:none;margin:20px auto;padding:15px;border-radius:15px;text-align:center}
+.message-success{background:#d1c4e9}
+.message-cancel{background:#f8bbd0}
+footer{text-align:center;margin-top:40px;font-size:14px}
+</style>
+</head>
+
+<body>
+<div class="container">
+    <div class="header">
+        <div class="logo">π</div>
+        <h1>Donate Way</h1>
+        <p>Donate with Pi Network to support charitable campaigns</p>
+        <div id="user"></div>
+    </div>
+
+    <div id="campaigns" class="campaigns"></div>
+
+    <div id="messageBox" class="message-box"></div>
+
+    <footer>Donate Way © 2025 - Powered by Pi Network</footer>
+</div>
+
+<script>
+Pi.init({ version: "2.0" });
+
+const BASE_URL = window.location.origin;
+
+let piUser = null;
+let currentUser = "Guest";
+let selectedAmounts = {};
+
+const campaigns = [
+    { id:"c1", title:"Food Aid", icon:"🍲", goal:500 },
+    { id:"c2", title:"Education", icon:"📚", goal:800 },
+    { id:"c3", title:"Medical Care", icon:"🏥", goal:600 },
+    { id:"c4", title:"Clean Water", icon:"💧", goal:1000 }
+];
+
+campaigns.forEach(c => selectedAmounts[c.id] = 5);
+
+async function initUser(){
+    try{
+        const auth = await Pi.authenticate(['username','payments']);
+        piUser = auth.user;
+        currentUser = piUser.username;
+        document.getElementById("user").innerText = "Welcome, " + currentUser + " 👋";
+    }catch{
+        document.getElementById("user").innerText = "Guest Mode";
+    }
+}
+
+function selectAmount(id,amount,btn){
+    selectedAmounts[id] = amount;
+    btn.parentElement.querySelectorAll(".amount-btn").forEach(b=>b.classList.remove("selected"));
+    btn.classList.add("selected");
+}
+
+function donate(id){
+    const amount = selectedAmounts[id];
+    const campaign = campaigns.find(c=>c.id===id);
+
+    const paymentData = {
+        amount: amount.toString(),
+        memo: `Donation ${amount} Pi to ${campaign.title}`,
+        metadata:{
+            campaign:campaign.title,
+            donor:currentUser
+        }
+    };
+
+    Pi.createPayment(paymentData,{
+        onReadyForServerApproval:(paymentId)=>{
+            fetch(`${BASE_URL}/.netlify/functions/approve`,{
+                method:"POST",
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({paymentId})
+            });
+        },
+        onReadyForServerCompletion:(paymentId,txid)=>{
+            fetch(`${BASE_URL}/.netlify/functions/complete`,{
+                method:"POST",
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({paymentId,txid})
+            });
+            showMessage("✅ Donation successful","success");
+        },
+        onCancel:()=>showMessage("❌ Payment cancelled","cancel"),
+        onError:(e)=>showMessage("❌ "+e.message,"cancel")
+    });
+}
+
+function showMessage(msg,type){
+    const box=document.getElementById("messageBox");
+    box.innerText=msg;
+    box.className="message-box "+(type==="success"?"message-success":"message-cancel");
+    box.style.display="block";
+    setTimeout(()=>box.style.display="none",5000);
+}
+
+function renderCampaigns(){
+    const wrap=document.getElementById("campaigns");
+    campaigns.forEach(c=>{
+        const div=document.createElement("div");
+        div.className="campaign-card";
+        div.innerHTML=`
+            <div class="icon">${c.icon}</div>
+            <h3>${c.title}</h3>
+            <div class="progress-container">
+                <div class="progress-bar">0%</div>
+            </div>
+            <div>
+                <button class="amount-btn selected" onclick="selectAmount('${c.id}',5,this)">5</button>
+                <button class="amount-btn" onclick="selectAmount('${c.id}',10,this)">10</button>
+                <button class="amount-btn" onclick="selectAmount('${c.id}',50,this)">50</button>
+            </div>
+            <button class="donate" onclick="donate('${c.id}')">Donate with Pi</button>
+        `;
+        wrap.appendChild(div);
+    });
+}
+
+window.onload=()=>{
+    initUser();
+    renderCampaigns();
+};
+</script>
+</body>
+</html>

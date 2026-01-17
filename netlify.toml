@@ -1,0 +1,15 @@
+[build]
+publish = "." # ينشر كل الملفات في الـ root
+functions = "netlify/functions" # مكان الـ functions
+
+[[redirects]]
+from = "/api/pi/approve"
+to = "/.netlify/functions/approve"
+status = 200
+force = true
+
+[[redirects]]
+from = "/api/pi/complete"
+to = "/.netlify/functions/complete"
+status = 200
+force = true
