@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PurpleCloud | سحابتك الذكية</title>
+    <title>PurpleCloud | سحابتك الذكية عبر Pi</title>
+    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -14,12 +15,13 @@
             --secondary: #4b0082;
             --glass: rgba(255, 255, 255, 0.1);
             --text: #ffffff;
+            --accent: #ffa500;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
 
         body {
-            background: linear-gradient(45deg, #0f0c29, #302b63, #24243e);
+            background: linear-gradient(-45deg, #0f0c29, #302b63, #24243e, #4b0082);
             background-size: 400% 400%;
             animation: gradientBG 15s ease infinite;
             color: var(--text);
@@ -27,7 +29,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            overflow-x: hidden;
+            padding: 20px;
         }
 
         @keyframes gradientBG {
@@ -36,191 +38,266 @@
             100% { background-position: 0% 50%; }
         }
 
-        /* التصميم الزجاجي */
         .glass-container {
             background: var(--glass);
             backdrop-filter: blur(15px);
-            -webkit-backdrop-filter: blur(15px);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            padding: 2rem;
-            width: 90%;
-            max-width: 1000px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            border-radius: 25px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 900px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
         }
 
         .header { text-align: center; margin-bottom: 2rem; }
-        .header h1 { font-size: 2.5rem; color: #e0b0ff; }
+        .header h1 { font-size: 2.8rem; color: #e0b0ff; text-shadow: 0 0 15px rgba(138, 43, 226, 0.5); }
 
-        /* منطقة الرفع */
+        #auth-section {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .user-info { display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: bold; }
+
         .upload-section {
             border: 2px dashed rgba(255, 255, 255, 0.3);
-            padding: 2rem;
+            padding: 3rem;
             text-align: center;
-            border-radius: 15px;
+            border-radius: 20px;
             transition: 0.3s;
             cursor: pointer;
             margin-bottom: 2rem;
         }
-        .upload-section:hover { background: rgba(255, 255, 255, 0.05); border-color: var(--primary); }
+        .upload-section:hover { background: rgba(138, 43, 226, 0.1); border-color: var(--primary); }
 
-        /* شبكة الخطط (Pricing) */
+        .file-list { margin-top: 2rem; max-height: 300px; overflow-y: auto; }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.07);
+            padding: 12px 20px;
+            margin-bottom: 8px;
+            border-radius: 12px;
+            border-right: 4px solid var(--primary);
+        }
+
         .pricing-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1.5rem;
             margin-top: 2rem;
         }
 
         .plan-card {
-            background: rgba(138, 43, 226, 0.2);
+            background: rgba(255, 255, 255, 0.05);
             padding: 1.5rem;
             border-radius: 15px;
             text-align: center;
-            border: 1px solid transparent;
-            transition: 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .plan-card:hover { transform: translateY(-10px); border-color: var(--primary); }
-        .plan-card.premium { background: rgba(138, 43, 226, 0.4); border: 1px solid gold; }
 
         button {
             background: var(--primary);
             color: white;
             border: none;
-            padding: 10px 25px;
-            border-radius: 25px;
+            padding: 12px 25px;
+            border-radius: 30px;
             cursor: pointer;
             font-weight: bold;
             transition: 0.3s;
-            margin-top: 10px;
         }
-        button:hover { background: #a23eff; transform: scale(1.05); }
+        button:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(138, 43, 226, 0.4); }
+        .btn-pi { background: var(--accent); color: #000; }
 
-        .file-list { margin-top: 2rem; }
-        .file-item {
-            display: flex;
-            justify-content: space-between;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 10px;
-            margin-bottom: 5px;
-            border-radius: 8px;
-        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
     </style>
 </head>
 <body>
 
 <div class="glass-container">
     <div class="header">
-        <h1><i class="fas fa-cloud-upload-alt"></i> PurpleCloud</h1>
-        <p>تخزين سحابي آمن بلمسة أرجوانية</p>
+        <h1><i class="fas fa-cloud-meatball"></i> PurpleCloud</h1>
+        <p>تخزين سحابي مشفر مدعوم بـ Pi Network</p>
     </div>
 
-    <div id="app-content">
+    <div id="auth-section">
+        <div id="auth-content">
+            <p style="margin-bottom: 10px;">يجب تسجيل الدخول للوصول إلى ملفاتك</p>
+            <button class="btn-pi" onclick="loginWithPi()">
+                <i class="fab fa-pi"></i> الدخول بواسطة Pi Browser
+            </button>
+        </div>
+    </div>
+
+    <div id="main-app" style="display: none;">
         <div class="upload-section" onclick="document.getElementById('fileInput').click()">
-            <i class="fas fa-cloud-arrow-up fa-3x"></i>
-            <p>اسحب الملفات هنا أو اضغط للرفع</p>
+            <i class="fas fa-file-upload fa-4x" style="color: #e0b0ff;"></i>
+            <p style="margin-top: 15px;">اضغط هنا لرفع الصور، الفيديوهات أو الملفات</p>
             <input type="file" id="fileInput" hidden onchange="uploadFile(this.files[0])">
         </div>
 
-        <div class="file-list" id="fileList">
-            <h3>ملفاتك الأخيرة</h3>
-            </div>
+        <div id="fileListContainer">
+            <h3 style="margin-bottom: 15px;"><i class="fas fa-folder-open"></i> ملفاتك السحابية</h3>
+            <div class="file-list" id="fileList">
+                </div>
+        </div>
 
-        <hr style="margin: 2rem 0; opacity: 0.2;">
+        <hr style="margin: 2.5rem 0; opacity: 0.1;">
 
-        <h3 style="text-align: center;">ترقية مساحة التخزين (Pi Network)</h3>
+        <h3 style="text-align: center;"><i class="fas fa-crown"></i> ترقية مساحة التخزين</h3>
         <div class="pricing-grid">
             <div class="plan-card">
-                <h4>خطة أساسية</h4>
-                <p>10 GB</p>
-                <h3>5 Pi</h3>
-                <button onclick="payWithPi(5, 'Basic Storage')">شراء الآن</button>
+                <h4>باقة 10GB</h4>
+                <p style="font-size: 1.5rem; margin: 10px 0;">5 Pi</p>
+                <button onclick="payWithPi(5, '10GB Pack')">شراء</button>
             </div>
-            <div class="plan-card premium">
-                <h4>خطة المحترفين</h4>
-                <p>100 GB</p>
-                <h3>20 Pi</h3>
-                <button onclick="payWithPi(20, 'Premium Storage')">شراء الآن</button>
+            <div class="plan-card" style="border-color: gold;">
+                <h4>باقة 100GB</h4>
+                <p style="font-size: 1.5rem; margin: 10px 0;">20 Pi</p>
+                <button onclick="payWithPi(20, '100GB Pack')">شراء</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // --- إعدادات Supabase ---
+    // --- إعدادات الاتصال ---
     const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // --- إعدادات Pi Network ---
-    Pi.init({ version: "2.0", sandbox: true }); // اجعل sandbox: false عند النشر الفعلي
+    let currentUser = null;
 
-    async function payWithPi(amount, planName) {
+    // تهيئة Pi SDK
+    Pi.init({ version: "2.0", sandbox: true });
+
+    // 1. وظيفة تسجيل الدخول
+    async function loginWithPi() {
         try {
-            const payment = await Pi.createPayment({
-                amount: amount,
-                memo: `شراء مساحة تخزين: ${planName}`,
-                metadata: { plan: planName },
-            }, {
-                onReadyForServerApproval: (paymentId) => {
-                    // إرسال paymentId إلى Netlify Function التي كتبتها أنت
-                    fetch('/api/pi/approve', {
-                        method: 'POST',
-                        body: JSON.stringify({ paymentId })
-                    });
-                },
-                onReadyForServerCompletion: (paymentId, txid) => {
-                    fetch('/api/pi/complete', {
-                        method: 'POST',
-                        body: JSON.stringify({ paymentId, txid })
-                    });
-                    alert('تمت عملية الشراء بنجاح! تم ترقية حسابك.');
-                },
-                onCancel: (paymentId) => console.log("Payment Cancelled"),
-                onError: (error, payment) => console.error(error),
-            });
+            const scopes = ['username', 'payments'];
+            const auth = await Pi.authenticate(scopes, onIncompletePaymentFound);
+            
+            currentUser = auth.user;
+            
+            // تسجيل/تحديث المستخدم في قاعدة البيانات
+            const { error } = await supabaseClient
+                .from('users')
+                .upsert({ 
+                    pi_uid: currentUser.uid, 
+                    username: currentUser.username 
+                }, { onConflict: 'pi_uid' });
+
+            if (error) throw error;
+
+            showApp();
         } catch (err) {
             console.error(err);
-            alert("حدث خطأ في اتصال Pi Wallet");
+            alert("حدث خطأ أثناء تسجيل الدخول. تأكد من فتح الموقع من داخل تطبيق Pi.");
         }
     }
 
-    // --- وظائف التخزين ---
-    async function uploadFile(file) {
-        if (!file) return;
-        
-        const fileName = `${Date.now()}-${file.name}`;
-        const { data, error } = await supabase.storage
-            .from('uploads') // تأكد من إنشاء Bucket باسم uploads في Supabase
-            .upload(fileName, file);
+    function showApp() {
+        document.getElementById('auth-content').innerHTML = `
+            <div class="user-info">
+                <i class="fas fa-user-circle fa-lg"></i>
+                <span>أهلاً، ${currentUser.username}</span>
+                <button onclick="location.reload()" style="padding: 5px 10px; font-size: 12px; background: #ff4444;">خروج</button>
+            </div>
+        `;
+        document.getElementById('main-app').style.display = 'block';
+        refreshFileList();
+    }
 
-        if (error) {
-            alert("خطأ في الرفع: " + error.message);
-        } else {
+    // 2. وظيفة رفع الملفات
+    async function uploadFile(file) {
+        if (!file || !currentUser) return;
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${currentUser.uid}/${Date.now()}.${fileExt}`;
+
+        try {
+            // الرفع إلى Storage
+            const { data, error } = await supabaseClient.storage
+                .from('uploads')
+                .upload(fileName, file);
+
+            if (error) throw error;
+
+            // حفظ الميتا داتا في الجدول
+            await supabaseClient.from('files_metadata').insert({
+                file_name: file.name,
+                file_url: fileName,
+                user_pi_uid: currentUser.uid
+            });
+
             alert("تم رفع الملف بنجاح!");
             refreshFileList();
+        } catch (err) {
+            alert("خطأ في الرفع: " + err.message);
         }
     }
 
+    // 3. عرض الملفات الخاصة بالمستخدم فقط
     async function refreshFileList() {
-        const fileListDiv = document.getElementById('fileList');
-        const { data, error } = await supabase.storage.from('uploads').list();
+        const { data, error } = await supabaseClient
+            .from('files_metadata')
+            .select('*')
+            .eq('user_pi_uid', currentUser.uid)
+            .order('created_at', { ascending: false });
 
-        if (data) {
-            fileListDiv.innerHTML = '<h3>ملفاتك الأخيرة</h3>';
+        const listDiv = document.getElementById('fileList');
+        listDiv.innerHTML = '';
+
+        if (data && data.length > 0) {
             data.forEach(file => {
-                fileListDiv.innerHTML += `
+                const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/uploads/${file.file_url}`;
+                listDiv.innerHTML += `
                     <div class="file-item">
-                        <span><i class="far fa-file"></i> ${file.name}</span>
-                        <a href="${SUPABASE_URL}/storage/v1/object/public/uploads/${file.name}" target="_blank" style="color: #e0b0ff;">تحميل</a>
+                        <span><i class="far fa-file-alt"></i> ${file.file_name}</span>
+                        <a href="${publicUrl}" target="_blank" style="color: #e0b0ff; text-decoration: none;">
+                            <i class="fas fa-download"></i> تحميل
+                        </a>
                     </div>
                 `;
             });
+        } else {
+            listDiv.innerHTML = '<p style="text-align:center; opacity:0.5;">لا توجد ملفات مرفوعة بعد.</p>';
         }
     }
 
-    // تحميل القائمة عند فتح الموقع
-    refreshFileList();
+    // 4. نظام المدفوعات
+    async function payWithPi(amount, planName) {
+        if(!currentUser) return alert("سجل دخولك أولاً");
+        
+        try {
+            await Pi.createPayment({
+                amount: amount,
+                memo: `ترقية سعة التخزين: ${planName}`,
+                metadata: { plan: planName, uid: currentUser.uid },
+            }, {
+                onReadyForServerApproval: (paymentId) => {
+                    fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({ paymentId }) });
+                },
+                onReadyForServerCompletion: (paymentId, txid) => {
+                    fetch('/api/pi/complete', { method: 'POST', body: JSON.stringify({ paymentId, txid }) });
+                    alert("شكراً لك! تم تفعيل الباقة بنجاح.");
+                },
+                onCancel: (paymentId) => console.log("تم إلغاء الدفع"),
+                onError: (error) => alert("خطأ في عملية الدفع"),
+            });
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function onIncompletePaymentFound(payment) {
+        console.log("Incomplete payment found", payment);
+    };
 </script>
 
 </body>
