@@ -2,170 +2,214 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Pi City Life RPG</title>
 
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
-:root {
+:root{
   --primary:#6b3484;
   --gold:#fbce27;
   --bg:#121212;
   --panel:rgba(30,30,30,.9);
 }
-body{margin:0;overflow:hidden;background:var(--bg);color:#fff;font-family:Segoe UI}
-
-#login-screen{
-  position:fixed;inset:0;z-index:999;
-  background:linear-gradient(135deg,#2c0b36,#000);
-  display:flex;flex-direction:column;justify-content:center;align-items:center
-}
-.btn-start{
-  background:var(--gold);color:#000;border:0;
-  padding:15px 40px;font-size:1.2rem;border-radius:50px;
-  cursor:pointer;font-weight:bold;
+body{
+  margin:0;overflow:hidden;
+  font-family:Segoe UI,sans-serif;
+  background:var(--bg);color:#fff;
 }
 .hidden{display:none}
 
+/* Login */
+#login-screen{
+  position:fixed;inset:0;z-index:999;
+  background:linear-gradient(135deg,#2c0b36,#000);
+  display:flex;flex-direction:column;
+  justify-content:center;align-items:center;
+}
+.btn-start{
+  background:var(--gold);color:#000;
+  border:0;padding:15px 40px;
+  font-size:1.2rem;border-radius:50px;
+  font-weight:bold;cursor:pointer;
+}
+
+/* HUD */
 #ui-layer{
-  position:absolute;top:0;left:0;right:0;padding:15px;
-  display:flex;justify-content:space-between;pointer-events:none
+  position:absolute;top:0;left:0;right:0;
+  padding:15px;display:flex;
+  justify-content:space-between;
+  pointer-events:none;
 }
 .hud-box{
-  background:var(--panel);padding:10px 20px;border-radius:12px;
-  border:1px solid var(--primary);pointer-events:auto
+  background:var(--panel);
+  padding:10px 20px;border-radius:12px;
+  border:1px solid var(--primary);
+  pointer-events:auto;
 }
+
+/* Controls */
 #controls{
-  position:absolute;bottom:20px;left:50%;
-  transform:translateX(-50%);
-  display:flex;gap:10px
+  position:absolute;bottom:20px;
+  left:50%;transform:translateX(-50%);
+  display:flex;gap:10px;
 }
 .action-btn{
-  background:#333;color:#fff;border:1px solid #555;
-  padding:10px 20px;border-radius:8px;cursor:pointer
+  background:#333;color:#fff;
+  border:1px solid #555;
+  padding:10px 20px;border-radius:8px;
+  cursor:pointer;
 }
-.btn-buy{background:var(--primary);border-color:var(--gold)}
+.btn-buy{
+  background:var(--primary);
+  border-color:var(--gold);
+}
+
 canvas{display:block}
 </style>
 </head>
 
 <body>
 
+<!-- LOGIN -->
 <div id="login-screen">
   <h1 style="color:var(--gold)">Pi Life RPG</h1>
-  <p>عالمك الافتراضي المربوط بـ Pi Network</p>
+  <p>عالم افتراضي مربوط بـ Pi Network</p>
   <button class="btn-start" onclick="login()">ابدأ رحلتك</button>
 </div>
 
+<!-- UI -->
 <div id="ui-layer" class="hidden">
   <div class="hud-box">
-    👤 <b id="ui-name">...</b> | ⭐ Lvl <b id="ui-lvl">1</b>
+    👤 <b id="ui-name">---</b> |
+    ⭐ Lv <b id="ui-lvl">1</b>
   </div>
   <div class="hud-box">
-    🏠 <b id="ui-assets">0</b> عقارات
+    🏠 <b id="ui-assets">0</b> منازل
   </div>
 </div>
 
+<!-- CONTROLS -->
 <div id="controls" class="hidden">
-  <button class="action-btn" onclick="train()">📚 تعلم</button>
+  <button class="action-btn" onclick="train()">📚 تدريب</button>
   <button class="action-btn btn-buy" onclick="buyHouse()">🏠 شراء منزل (1 Pi)</button>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <script>
-/* ---------------- SETUP ---------------- */
+/* ---------------- CONFIG ---------------- */
 const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const Pi = window.Pi;
-Pi.init({version:"2.0", sandbox:false});
+Pi.init({ version: "2.0", sandbox: false });
 
 let userState = null;
 
 /* ---------------- LOGIN ---------------- */
 async function login(){
   try{
-    const auth = await Pi.authenticate(['username','payments'], onIncompletePayment);
+    const auth = await Pi.authenticate(
+      ['username','payments'],
+      onIncompletePayment
+    );
+
     const username = auth.user.username;
 
-    let { data, error } = await supabase
+    let { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('username', username)
       .maybeSingle();
 
     if(!data){
-      const { data:newUser } = await supabase
+      const { data:newUser, error } = await supabase
         .from('profiles')
-        .insert([{
-          username,
-          level:1,
-          xp:0,
-          assets:[]
-        }])
+        .insert([{ username }])
         .select()
         .single();
+
+      if(error) throw error;
       userState = newUser;
     }else{
       userState = data;
-      userState.xp ??= 0;
-      userState.level ??= 1;
-      userState.assets ??= [];
     }
 
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('ui-layer').classList.remove('hidden');
     document.getElementById('controls').classList.remove('hidden');
+
     updateUI();
     startGameLoop();
 
   }catch(e){
-    alert("لازم تفتح اللعبة من Pi Browser");
+    alert("⚠️ افتح اللعبة من Pi Browser");
     console.error(e);
   }
 }
 
-/* ---------------- GAME ---------------- */
+/* ---------------- GAME LOGIC ---------------- */
 function train(){
   userState.xp += 10;
+
   if(userState.xp >= 100){
     userState.level++;
     userState.xp = 0;
-    alert("⬆️ Level Up");
+    alert("⬆️ Level Up!");
   }
+
   updateUI();
+
   supabase.from('profiles')
-    .update({xp:userState.xp, level:userState.level})
+    .update({
+      xp: userState.xp,
+      level: userState.level
+    })
     .eq('username', userState.username);
 }
 
 async function buyHouse(){
   await Pi.createPayment(
-    {amount:1, memo:"Virtual House", metadata:{type:"house"}},
+    { amount:1, memo:"Buy Virtual House", metadata:{type:"house"} },
     {
-      onReadyForServerApproval:pid=>{
-        fetch('/api/pi/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paymentId:pid})});
+      onReadyForServerApproval: pid => {
+        fetch('/api/pi/approve',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({paymentId:pid})
+        });
       },
-      onReadyForServerCompletion:async(pid,txid)=>{
-        fetch('/api/pi/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paymentId:pid,txid})});
-        userState.assets.push({type:'house'});
-        const { data } = await supabase.from('profiles')
-          .update({assets:userState.assets})
+      onReadyForServerCompletion: async (pid, txid) => {
+        fetch('/api/pi/complete',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({paymentId:pid, txid})
+        });
+
+        userState.assets.push({type:"house", date:Date.now()});
+
+        const { data } = await supabase
+          .from('profiles')
+          .update({ assets: userState.assets })
           .eq('username', userState.username)
-          .select().single();
+          .select()
+          .single();
+
         userState = data;
         updateUI();
-        alert("🏠 تم الشراء");
+        alert("🏠 تم شراء المنزل");
       }
     }
   );
 }
 
-function onIncompletePayment(p){ console.log("Incomplete",p); }
+function onIncompletePayment(p){
+  console.log("Incomplete payment:", p);
+}
 
 function updateUI(){
   ui-name.innerText = userState.username;
@@ -176,31 +220,48 @@ function updateUI(){
 /* ---------------- CANVAS ---------------- */
 const canvas = gameCanvas;
 const ctx = canvas.getContext('2d');
-function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
-onresize=resize;resize();
 
-let player={x:innerWidth/2,y:innerHeight/2};
+function resize(){
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+}
+window.onresize = resize;
+resize();
+
+let player = { x: innerWidth/2, y: innerHeight/2 };
 
 function startGameLoop(){
   function draw(){
-    ctx.fillStyle="#121212";
+    ctx.fillStyle = "#121212";
     ctx.fillRect(0,0,canvas.width,canvas.height);
+
     ctx.beginPath();
-    ctx.arc(player.x,player.y,25,0,Math.PI*2);
-    ctx.fillStyle="#6b3484";
+    ctx.arc(player.x, player.y, 25, 0, Math.PI*2);
+    ctx.fillStyle = "#6b3484";
     ctx.fill();
-    ctx.strokeStyle="#fbce27";
-    ctx.lineWidth=3;
+    ctx.strokeStyle = "#fbce27";
+    ctx.lineWidth = 3;
     ctx.stroke();
-    ctx.fillStyle="#fff";
-    ctx.textAlign="center";
-    ctx.fillText(userState.username,player.x,player.y-35);
+
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 14px Arial";
+    ctx.fillText(userState.username, player.x, player.y - 35);
+
+    if(userState.assets.length > 0){
+      ctx.fillStyle="#4CAF50";
+      ctx.fillRect(player.x+40, player.y-40, 30, 30);
+    }
+
     requestAnimationFrame(draw);
   }
   draw();
 }
 
-canvas.onclick=e=>{player.x=e.clientX;player.y=e.clientY;}
+canvas.addEventListener('click', e=>{
+  player.x = e.clientX;
+  player.y = e.clientY;
+});
 </script>
 </body>
 </html>
