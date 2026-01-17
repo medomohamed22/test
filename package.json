@@ -1,0 +1,9 @@
+{
+  "name": "pi-network-app",
+  "version": "1.0.0",
+  "description": "Pi Payment Integration",
+  "main": "index.html",
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  }
+}
