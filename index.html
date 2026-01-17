@@ -2,183 +2,204 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>نسخة تجربة الخصائص</title>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi Life Simulation</title>
+    <script src="https://sdk.minepi.com/pi-sdk.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-
+    
     <style>
-        :root { --primary: #6a1b9a; --accent: #ffa000; --bg: #f4f7f6; --sent: #dcf8c6; }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-        body { background: var(--bg); height: 100vh; display: flex; overflow: hidden; }
-
-        /* واجهة الدخول التجريبية */
-        #test-login {
-            position: fixed; inset: 0; background: var(--primary);
-            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10000; color: white;
+        :root {
+            --primary: #6b3484; /* لون باي */
+            --accent: #ffa500;
+            --bg: #0f0c29;
         }
 
-        .input-test { padding: 12px; border-radius: 10px; border: none; margin-bottom: 10px; width: 250px; text-align: center; }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: var(--bg); font-family: 'Arial', sans-serif; overflow: hidden;
+        }
 
-        /* التطبيق الرئيسي */
-        .app-container { display: none; width: 100%; height: 100vh; }
-        .sidebar { width: 320px; background: white; border-left: 1px solid #ddd; display: flex; flex-direction: column; }
-        .wallet-box { background: #fff3e0; margin: 15px; padding: 15px; border-radius: 12px; border: 1px solid #ffe0b2; }
+        /* واجهة الدخول */
+        #login-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+            display: flex; justify-content: center; align-items: center; z-index: 1000;
+        }
 
-        .chat-main { flex: 1; display: flex; flex-direction: column; background: #e5ddd5; }
-        .chat-header { padding: 12px 20px; background: #f0f0f0; border-bottom: 1px solid #ccc; display: flex; align-items: center; justify-content: space-between; }
-        
-        .messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .bubble { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 15px; }
-        .bubble.sent { align-self: flex-end; background: var(--sent); }
-        .bubble.received { align-self: flex-start; background: white; }
+        .card {
+            background: white; padding: 30px; border-radius: 20px; text-align: center;
+            box-shadow: 0 0 20px var(--accent);
+        }
 
-        .input-bar { padding: 15px; background: #f0f0f0; display: flex; gap: 10px; }
-        .input-bar input { flex: 1; padding: 12px; border-radius: 25px; border: none; outline: none; }
+        /* واجهة اللعبة HUD */
+        #hud {
+            position: absolute; top: 20px; left: 20px; right: 20px;
+            display: flex; justify-content: space-between; pointer-events: none;
+            z-index: 100;
+        }
 
-        #withdraw-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 11000; align-items: center; justify-content: center; }
-        .modal-content { background: white; padding: 25px; border-radius: 15px; width: 90%; max-width: 400px; text-align: right; }
-        .btn-style { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .stat-box {
+            background: rgba(0,0,0,0.6); color: white; padding: 10px 20px;
+            border-radius: 50px; border: 2px solid var(--accent); pointer-events: auto;
+            backdrop-filter: blur(5px);
+        }
+
+        /* قائمة الأوامر */
+        #controls {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 15px; pointer-events: auto;
+        }
+
+        button {
+            padding: 12px 25px; border-radius: 12px; border: none; cursor: pointer;
+            font-weight: bold; transition: 0.3s;
+        }
+
+        .btn-action { background: var(--accent); color: #000; }
+        .btn-pi { background: var(--primary); color: #white; color: white;}
+
+        /* العالم */
+        #game-world { width: 100vw; height: 100vh; cursor: crosshair; }
+
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <div id="test-login">
-        <h2>واجهة التجربة</h2>
-        <p style="margin-bottom: 20px;">ادخل أي اسم مستخدم للتجربة</p>
-        <input type="text" id="test-user" class="input-test" placeholder="اسمك">
-        <button class="btn-style" onclick="startTesting()">دخول التجربة</button>
-    </div>
-
-    <div id="withdraw-modal">
-        <div class="modal-content">
-            <h3>سحب الرصيد (تجربة)</h3>
-            <input type="number" id="w-amount" placeholder="الكمية" style="width:100%; padding:10px; margin:10px 0;">
-            <input type="text" id="w-address" placeholder="عنوان المحفظة" style="width:100%; padding:10px; margin-bottom:15px;">
-            <button class="btn-style" style="width:100%;" onclick="requestWithdraw()">إرسال طلب السحب</button>
-            <button onclick="document.getElementById('withdraw-modal').style.display='none'" style="width:100%; background:none; border:none; margin-top:10px;">إلغاء</button>
+    <div id="login-overlay">
+        <div class="card">
+            <h1 style="color: var(--primary)">عالم Pi الافتراضي</h1>
+            <p>ابنِ مستقبلك، تعلم، واستثمر عملاتك</p>
+            <button class="btn-pi" id="login-btn" style="font-size: 1.2rem;">دخول عبر Pi Network</button>
         </div>
     </div>
 
-    <div class="app-container" id="app">
-        <aside class="sidebar">
-            <div style="padding:20px; background:var(--primary); color:white;"><h3>المحادثات التجريبية</h3></div>
-            <div class="wallet-box">
-                <p>رصيدك: <strong id="user-balance">0</strong> Pi</p>
-                <button onclick="document.getElementById('withdraw-modal').style.display='flex'" style="color:var(--primary); background:none; border:none; cursor:pointer; font-weight:bold; margin-top:5px;">سحب الرصيد ←</button>
-            </div>
-            <div id="user-list" style="flex:1; overflow-y:auto;"></div>
-        </aside>
-
-        <main class="chat-main">
-            <header class="chat-header">
-                <h4 id="chat-with">اختر مستخدماً</h4>
-                <button id="pay-button" class="btn-style" style="display:none; font-size:0.8rem;" onclick="simulatePayment()">إرسال 1 Pi (محاكاة)</button>
-            </header>
-            <div class="messages" id="msg-box"></div>
-            <div class="input-bar">
-                <input type="text" id="msg-input" placeholder="اكتب رسالة..." onkeypress="if(event.key==='Enter') send()">
-            </div>
-        </main>
+    <div id="hud" class="hidden">
+        <div class="stat-box">
+            👤 <span id="user-name">...</span> | 
+            ⭐ مستوي: <span id="user-level">1</span>
+        </div>
+        <div class="stat-box">
+            💰 <span id="user-pi">0</span> Pi
+        </div>
     </div>
 
+    <div id="controls" class="hidden">
+        <button class="btn-action" onclick="study()">📚 تعلم (XP+)</button>
+        <button class="btn-action" onclick="work()">💼 عمل (أموال وهمية)</button>
+        <button class="btn-pi" onclick="buyLand()">🏗️ شراء أرض (1 Pi)</button>
+    </div>
+
+    <canvas id="game-world"></canvas>
+
     <script>
-        const SB_URL = "https://xncapmzlwuisupkjlftb.supabase.co";
-        const SB_KEY = "sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS";
-        const supabase = supabase.createClient(SB_URL, SB_KEY);
+        // إعدادات الربط
+        const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        let me = { username: "" };
-        let activeChat = null;
+        const Pi = window.Pi;
+        let userData = {};
 
-        // وظيفة الدخول التجريبية
-        async function startTesting() {
-            const name = document.getElementById('test-user').value;
-            if(!name) return alert("اكتب اسمك");
-            me.username = name;
+        // 1. تسجيل الدخول
+        document.getElementById('login-btn').onclick = async () => {
+            try {
+                const auth = await Pi.authenticate(['username', 'payments'], onIncompletePayment);
+                initUser(auth.user);
+            } catch (e) {
+                alert("يرجى فتح اللعبة من داخل متصفح Pi Browser");
+            }
+        };
 
-            // تسجيل في Supabase أو جلب البيانات
-            const { data } = await supabase.from('users').upsert({
-                username: me.username, last_seen: new Date().toISOString()
-            }, { onConflict: 'username' }).select().single();
+        async function initUser(piUser) {
+            // جلب البيانات من Supabase
+            let { data, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .eq('username', piUser.username)
+                .single();
 
-            document.getElementById('user-balance').innerText = data.balance || 0;
-            document.getElementById('test-login').style.display = 'none';
-            document.getElementById('app').style.display = 'flex';
-            
-            loadUsers();
-            listenToMessages();
+            if (!data) {
+                // إنشاء مستخدم جديد
+                const { data: newUser } = await supabaseClient.from('profiles').insert([
+                    { username: piUser.username, balance_pi: 0, level: 1, xp: 0 }
+                ]).select().single();
+                data = newUser;
+            }
+
+            userData = data;
+            updateUI();
+            document.getElementById('login-overlay').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('controls').classList.remove('hidden');
+            startDrawing();
         }
 
-        async function loadUsers() {
-            const { data } = await supabase.from('users').select('*').neq('username', me.username);
-            const list = document.getElementById('user-list');
-            list.innerHTML = data.map(u => `
-                <div style="padding:15px; border-bottom:1px solid #eee; cursor:pointer;" onclick="selectUser('${u.username}')">
-                    <strong>${u.username}</strong>
-                </div>
-            `).join('');
+        function updateUI() {
+            document.getElementById('user-name').innerText = userData.username;
+            document.getElementById('user-level').innerText = userData.level;
+            document.getElementById('user-pi').innerText = userData.balance_pi;
         }
 
-        async function selectUser(u) {
-            activeChat = u;
-            document.getElementById('chat-with').innerText = u;
-            document.getElementById('pay-button').style.display = 'block';
-            document.getElementById('msg-box').innerHTML = '';
-            
-            const { data } = await supabase.from('messages').select('*')
-                .or(`and(sender.eq.${me.username},receiver.eq.${u}),and(sender.eq.${u},receiver.eq.${me.username})`)
-                .order('created_at', { ascending: true });
-            
-            if(data) data.forEach(msg => display(msg));
+        // 2. ميكانيكا اللعبة
+        async function study() {
+            userData.xp += 10;
+            if(userData.xp >= 100) {
+                userData.level += 1;
+                userData.xp = 0;
+                alert("تهانينا! ارتقيت لمستوى جديد");
+            }
+            await saveProgress();
+            updateUI();
         }
 
-        function display(m) {
-            const box = document.getElementById('msg-box');
-            const div = document.createElement('div');
-            div.className = `bubble ${m.sender === me.username ? 'sent' : 'received'}`;
-            div.innerText = m.content;
-            box.appendChild(div);
-            box.scrollTop = box.scrollHeight;
+        async function saveProgress() {
+            await supabaseClient.from('profiles')
+                .update({ xp: userData.xp, level: userData.level })
+                .eq('username', userData.username);
         }
 
-        async function send() {
-            const input = document.getElementById('msg-input');
-            if(!input.value || !activeChat) return;
-            const msg = { sender: me.username, receiver: activeChat, content: input.value };
-            display(msg);
-            const text = input.value;
-            input.value = '';
-            await supabase.from('messages').insert([msg]);
+        // 3. ربط المدفوعات الحقيقية
+        async function buyLand() {
+            const payment = await Pi.createPayment({
+                amount: 1,
+                memo: "شراء قطعة أرض افتراضية",
+                metadata: { type: "land_purchase" }
+            }, {
+                onReadyForServerApproval: (pid) => fetch('/api/pi/approve', {method:'POST', body: JSON.stringify({paymentId: pid})}),
+                onReadyForServerCompletion: (pid, txid) => fetch('/api/pi/complete', {method:'POST', body: JSON.stringify({paymentId: pid, txid})}),
+                onCancel: () => {},
+                onError: (e) => console.error(e)
+            });
         }
 
-        // محاكاة الدفع للتجربة
-        async function simulatePayment() {
-            alert("محاكاة: يتم الآن إرسال 1 Pi من رصيدك إلى " + activeChat);
-            // في النسخة الحقيقية هنا يتم استدعاء Pi SDK
-            await supabase.rpc('increment_balance', { user_name: activeChat, amount: 1.0 });
-            alert("تم تحديث رصيد المستلم في قاعدة البيانات بنجاح!");
+        // 4. الرسوميات (Canvas)
+        const canvas = document.getElementById('game-world');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        function startDrawing() {
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // رسم الشخصية (مربع ذهبي بسيط حالياً)
+                ctx.fillStyle = "#ffa500";
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = "#ffa500";
+                ctx.fillRect(canvas.width/2 - 25, canvas.height/2 - 25, 50, 50);
+                
+                // كتابة الاسم
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = "white";
+                ctx.textAlign = "center";
+                ctx.fillText(userData.username, canvas.width/2, canvas.height/2 - 40);
+
+                requestAnimationFrame(draw);
+            }
+            draw();
         }
 
-        async function requestWithdraw() {
-            const amount = parseFloat(document.getElementById('w-amount').value);
-            const addr = document.getElementById('w-address').value;
-            const balance = parseFloat(document.getElementById('user-balance').innerText);
-
-            if(amount > balance || amount <= 0) return alert("الرصيد غير كافٍ");
-            
-            await supabase.from('withdrawals').insert([{ username: me.username, amount, wallet_address: addr }]);
-            await supabase.from('users').update({ balance: balance - amount }).eq('username', me.username);
-            
-            alert("تم تسجيل الطلب في قاعدة البيانات!");
-            location.reload();
-        }
-
-        function listenToMessages() {
-            supabase.channel('chat').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, p => {
-                if(p.new.sender === activeChat && p.new.receiver === me.username) display(p.new);
-            }).subscribe();
-        }
+        function onIncompletePayment(p) { /* معالجة المدفوعات غير المكتملة */ }
     </script>
 </body>
 </html>
