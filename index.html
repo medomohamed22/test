@@ -1,267 +1,227 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Pi City Life RPG</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PurpleCloud | سحابتك الذكية</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary: #8a2be2;
+            --secondary: #4b0082;
+            --glass: rgba(255, 255, 255, 0.1);
+            --text: #ffffff;
+        }
 
-<script src="https://sdk.minepi.com/pi-sdk.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
 
-<style>
-:root{
-  --primary:#6b3484;
-  --gold:#fbce27;
-  --bg:#121212;
-  --panel:rgba(30,30,30,.9);
-}
-body{
-  margin:0;overflow:hidden;
-  font-family:Segoe UI,sans-serif;
-  background:var(--bg);color:#fff;
-}
-.hidden{display:none}
+        body {
+            background: linear-gradient(45deg, #0f0c29, #302b63, #24243e);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+        }
 
-/* Login */
-#login-screen{
-  position:fixed;inset:0;z-index:999;
-  background:linear-gradient(135deg,#2c0b36,#000);
-  display:flex;flex-direction:column;
-  justify-content:center;align-items:center;
-}
-.btn-start{
-  background:var(--gold);color:#000;
-  border:0;padding:15px 40px;
-  font-size:1.2rem;border-radius:50px;
-  font-weight:bold;cursor:pointer;
-}
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
 
-/* HUD */
-#ui-layer{
-  position:absolute;top:0;left:0;right:0;
-  padding:15px;display:flex;
-  justify-content:space-between;
-  pointer-events:none;
-}
-.hud-box{
-  background:var(--panel);
-  padding:10px 20px;border-radius:12px;
-  border:1px solid var(--primary);
-  pointer-events:auto;
-}
+        /* التصميم الزجاجي */
+        .glass-container {
+            background: var(--glass);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 1000px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
 
-/* Controls */
-#controls{
-  position:absolute;bottom:20px;
-  left:50%;transform:translateX(-50%);
-  display:flex;gap:10px;
-}
-.action-btn{
-  background:#333;color:#fff;
-  border:1px solid #555;
-  padding:10px 20px;border-radius:8px;
-  cursor:pointer;
-}
-.btn-buy{
-  background:var(--primary);
-  border-color:var(--gold);
-}
+        .header { text-align: center; margin-bottom: 2rem; }
+        .header h1 { font-size: 2.5rem; color: #e0b0ff; }
 
-canvas{display:block}
-</style>
+        /* منطقة الرفع */
+        .upload-section {
+            border: 2px dashed rgba(255, 255, 255, 0.3);
+            padding: 2rem;
+            text-align: center;
+            border-radius: 15px;
+            transition: 0.3s;
+            cursor: pointer;
+            margin-bottom: 2rem;
+        }
+        .upload-section:hover { background: rgba(255, 255, 255, 0.05); border-color: var(--primary); }
+
+        /* شبكة الخطط (Pricing) */
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .plan-card {
+            background: rgba(138, 43, 226, 0.2);
+            padding: 1.5rem;
+            border-radius: 15px;
+            text-align: center;
+            border: 1px solid transparent;
+            transition: 0.3s;
+        }
+        .plan-card:hover { transform: translateY(-10px); border-color: var(--primary); }
+        .plan-card.premium { background: rgba(138, 43, 226, 0.4); border: 1px solid gold; }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+            margin-top: 10px;
+        }
+        button:hover { background: #a23eff; transform: scale(1.05); }
+
+        .file-list { margin-top: 2rem; }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 8px;
+        }
+    </style>
 </head>
-
 <body>
 
-<!-- LOGIN -->
-<div id="login-screen">
-  <h1 style="color:var(--gold)">Pi Life RPG</h1>
-  <p>عالم افتراضي مربوط بـ Pi Network</p>
-  <button class="btn-start" onclick="login()">ابدأ رحلتك</button>
-</div>
+<div class="glass-container">
+    <div class="header">
+        <h1><i class="fas fa-cloud-upload-alt"></i> PurpleCloud</h1>
+        <p>تخزين سحابي آمن بلمسة أرجوانية</p>
+    </div>
 
-<!-- UI -->
-<div id="ui-layer" class="hidden">
-  <div class="hud-box">
-    👤 <b id="ui-name">---</b> |
-    ⭐ Lv <b id="ui-lvl">1</b>
-  </div>
-  <div class="hud-box">
-    🏠 <b id="ui-assets">0</b> منازل
-  </div>
-</div>
+    <div id="app-content">
+        <div class="upload-section" onclick="document.getElementById('fileInput').click()">
+            <i class="fas fa-cloud-arrow-up fa-3x"></i>
+            <p>اسحب الملفات هنا أو اضغط للرفع</p>
+            <input type="file" id="fileInput" hidden onchange="uploadFile(this.files[0])">
+        </div>
 
-<!-- CONTROLS -->
-<div id="controls" class="hidden">
-  <button class="action-btn" onclick="train()">📚 تدريب</button>
-  <button class="action-btn btn-buy" onclick="buyHouse()">🏠 شراء منزل (1 Pi)</button>
-</div>
+        <div class="file-list" id="fileList">
+            <h3>ملفاتك الأخيرة</h3>
+            </div>
 
-<canvas id="gameCanvas"></canvas>
+        <hr style="margin: 2rem 0; opacity: 0.2;">
+
+        <h3 style="text-align: center;">ترقية مساحة التخزين (Pi Network)</h3>
+        <div class="pricing-grid">
+            <div class="plan-card">
+                <h4>خطة أساسية</h4>
+                <p>10 GB</p>
+                <h3>5 Pi</h3>
+                <button onclick="payWithPi(5, 'Basic Storage')">شراء الآن</button>
+            </div>
+            <div class="plan-card premium">
+                <h4>خطة المحترفين</h4>
+                <p>100 GB</p>
+                <h3>20 Pi</h3>
+                <button onclick="payWithPi(20, 'Premium Storage')">شراء الآن</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
-/* ---------------- CONFIG ---------------- */
-const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // --- إعدادات Supabase ---
+    const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const Pi = window.Pi;
-Pi.init({ version: "2.0", sandbox: false });
+    // --- إعدادات Pi Network ---
+    Pi.init({ version: "2.0", sandbox: true }); // اجعل sandbox: false عند النشر الفعلي
 
-let userState = null;
-
-/* ---------------- LOGIN ---------------- */
-async function login(){
-  try{
-    const auth = await Pi.authenticate(
-      ['username','payments'],
-      onIncompletePayment
-    );
-
-    const username = auth.user.username;
-
-    let { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('username', username)
-      .maybeSingle();
-
-    if(!data){
-      const { data:newUser, error } = await supabase
-        .from('profiles')
-        .insert([{ username }])
-        .select()
-        .single();
-
-      if(error) throw error;
-      userState = newUser;
-    }else{
-      userState = data;
+    async function payWithPi(amount, planName) {
+        try {
+            const payment = await Pi.createPayment({
+                amount: amount,
+                memo: `شراء مساحة تخزين: ${planName}`,
+                metadata: { plan: planName },
+            }, {
+                onReadyForServerApproval: (paymentId) => {
+                    // إرسال paymentId إلى Netlify Function التي كتبتها أنت
+                    fetch('/api/pi/approve', {
+                        method: 'POST',
+                        body: JSON.stringify({ paymentId })
+                    });
+                },
+                onReadyForServerCompletion: (paymentId, txid) => {
+                    fetch('/api/pi/complete', {
+                        method: 'POST',
+                        body: JSON.stringify({ paymentId, txid })
+                    });
+                    alert('تمت عملية الشراء بنجاح! تم ترقية حسابك.');
+                },
+                onCancel: (paymentId) => console.log("Payment Cancelled"),
+                onError: (error, payment) => console.error(error),
+            });
+        } catch (err) {
+            console.error(err);
+            alert("حدث خطأ في اتصال Pi Wallet");
+        }
     }
 
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('ui-layer').classList.remove('hidden');
-    document.getElementById('controls').classList.remove('hidden');
+    // --- وظائف التخزين ---
+    async function uploadFile(file) {
+        if (!file) return;
+        
+        const fileName = `${Date.now()}-${file.name}`;
+        const { data, error } = await supabase.storage
+            .from('uploads') // تأكد من إنشاء Bucket باسم uploads في Supabase
+            .upload(fileName, file);
 
-    updateUI();
-    startGameLoop();
-
-  }catch(e){
-    alert("⚠️ افتح اللعبة من Pi Browser");
-    console.error(e);
-  }
-}
-
-/* ---------------- GAME LOGIC ---------------- */
-function train(){
-  userState.xp += 10;
-
-  if(userState.xp >= 100){
-    userState.level++;
-    userState.xp = 0;
-    alert("⬆️ Level Up!");
-  }
-
-  updateUI();
-
-  supabase.from('profiles')
-    .update({
-      xp: userState.xp,
-      level: userState.level
-    })
-    .eq('username', userState.username);
-}
-
-async function buyHouse(){
-  await Pi.createPayment(
-    { amount:1, memo:"Buy Virtual House", metadata:{type:"house"} },
-    {
-      onReadyForServerApproval: pid => {
-        fetch('/api/pi/approve',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({paymentId:pid})
-        });
-      },
-      onReadyForServerCompletion: async (pid, txid) => {
-        fetch('/api/pi/complete',{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({paymentId:pid, txid})
-        });
-
-        userState.assets.push({type:"house", date:Date.now()});
-
-        const { data } = await supabase
-          .from('profiles')
-          .update({ assets: userState.assets })
-          .eq('username', userState.username)
-          .select()
-          .single();
-
-        userState = data;
-        updateUI();
-        alert("🏠 تم شراء المنزل");
-      }
-    }
-  );
-}
-
-function onIncompletePayment(p){
-  console.log("Incomplete payment:", p);
-}
-
-function updateUI(){
-  ui-name.innerText = userState.username;
-  ui-lvl.innerText = userState.level;
-  ui-assets.innerText = userState.assets.length;
-}
-
-/* ---------------- CANVAS ---------------- */
-const canvas = gameCanvas;
-const ctx = canvas.getContext('2d');
-
-function resize(){
-  canvas.width = innerWidth;
-  canvas.height = innerHeight;
-}
-window.onresize = resize;
-resize();
-
-let player = { x: innerWidth/2, y: innerHeight/2 };
-
-function startGameLoop(){
-  function draw(){
-    ctx.fillStyle = "#121212";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, 25, 0, Math.PI*2);
-    ctx.fillStyle = "#6b3484";
-    ctx.fill();
-    ctx.strokeStyle = "#fbce27";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.font = "bold 14px Arial";
-    ctx.fillText(userState.username, player.x, player.y - 35);
-
-    if(userState.assets.length > 0){
-      ctx.fillStyle="#4CAF50";
-      ctx.fillRect(player.x+40, player.y-40, 30, 30);
+        if (error) {
+            alert("خطأ في الرفع: " + error.message);
+        } else {
+            alert("تم رفع الملف بنجاح!");
+            refreshFileList();
+        }
     }
 
-    requestAnimationFrame(draw);
-  }
-  draw();
-}
+    async function refreshFileList() {
+        const fileListDiv = document.getElementById('fileList');
+        const { data, error } = await supabase.storage.from('uploads').list();
 
-canvas.addEventListener('click', e=>{
-  player.x = e.clientX;
-  player.y = e.clientY;
-});
+        if (data) {
+            fileListDiv.innerHTML = '<h3>ملفاتك الأخيرة</h3>';
+            data.forEach(file => {
+                fileListDiv.innerHTML += `
+                    <div class="file-item">
+                        <span><i class="far fa-file"></i> ${file.name}</span>
+                        <a href="${SUPABASE_URL}/storage/v1/object/public/uploads/${file.name}" target="_blank" style="color: #e0b0ff;">تحميل</a>
+                    </div>
+                `;
+            });
+        }
+    }
+
+    // تحميل القائمة عند فتح الموقع
+    refreshFileList();
 </script>
+
 </body>
 </html>
