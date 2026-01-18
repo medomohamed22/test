@@ -1,10 +1,19 @@
 [build]
-  command = "pip install -r requirements.txt"
+  publish = "." 
   functions = "netlify/functions"
-  publish = "."
 
-[functions]
-  node_bundler = "esbuild"
+# توجيه الموافقة على الدفع
+[[redirects]]
+  from = "/api/pi/approve"
+  to = "/.netlify/functions/approve"
+  status = 200
+  force = true
 
-[context.production.environment]
-  PYTHON_VERSION = "3.9"
+# توجيه إكمال الدفع
+[[redirects]]
+  from = "/api/pi/complete"
+  to = "/.netlify/functions/complete"
+  status = 200
+  force = true
+
+  
