@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>بوابة مدفوعات Pi Network المتطورة</title>
+    <title>بوابة مدفوعات Pi Network</title>
     
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
 
@@ -12,6 +12,8 @@
             --pi-purple: #5e2a84;
             --pi-gold: #ffa500;
             --bg-color: #f0f2f5;
+            --success-green: #28a745;
+            --error-red: #dc3545;
         }
 
         body {
@@ -30,7 +32,7 @@
             padding: 30px;
             border-radius: 25px;
             box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-            width: 100%;
+            width: 90%;
             max-width: 400px;
             text-align: center;
         }
@@ -115,14 +117,17 @@
         .status {
             margin-top: 15px;
             font-size: 0.9rem;
-            min-height: 20px;
-            padding: 10px;
-            border-radius: 8px;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px 10px;
+            border-radius: 10px;
         }
 
-        .success { background-color: #e6ffed; color: #28a745; }
-        .error { background-color: #ffeef0; color: #dc3545; }
-        .info { background-color: #e8f4fd; color: #007bff; }
+        .success { color: var(--success-green); background: #e8f5e9; }
+        .error { color: var(--error-red); background: #ffebee; }
+        .loading { color: #555; background: #f8f9fa; }
     </style>
 </head>
 <body>
@@ -133,7 +138,7 @@
         <h2>بوابة مدفوعات Pi</h2>
         
         <div class="user-info">
-            مرحباً، <span id="username">جاري التحقق...</span>
+            مرحباً، <span id="username">جاري التعرف عليك...</span>
         </div>
 
         <div class="price-box">
@@ -152,15 +157,13 @@
         const payButton = document.getElementById('pay-button');
 
         // 1. تهيئة الـ SDK
-        // ملاحظة: اجعل sandbox: true أثناء الاختبار، و false عند الإطلاق الحقيقي
         Pi.init({ version: "2.0", sandbox: false });
 
-        // 2. وظيفة معالجة المدفوعات المعلقة (الحل الأوتوماتيكي)
+        // 2. وظيفة حل المدفوعات المعلقة (Incomplete Payments)
         async function onIncompletePaymentFound(payment) {
-            showStatus("تم العثور على دفعة معلقة، جاري تسويتها...", "info");
+            showStatus("جاري معالجة عملية سابقة معلقة...", "loading");
             
             try {
-                // إرسال معرف العملية المعلقة للسيرفر لإكمالها
                 const response = await fetch('/api/pi/complete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -171,21 +174,18 @@
                 });
 
                 if (response.ok) {
-                    showStatus("تمت تسوية الدفعة السابقة بنجاح.", "success");
-                } else {
-                    showStatus("فشلت تسوية الدفعة المعلقة، يرجى التواصل مع الدعم.", "error");
+                    showStatus("تمت تسوية الدفعة المعلقة بنجاح.", "success");
                 }
-            } catch (error) {
-                console.error("Error solving incomplete payment:", error);
-                showStatus("حدث خطأ أثناء معالجة العملية المعلقة.", "error");
+            } catch (err) {
+                console.error("Incomplete payment resolution failed:", err);
+                showStatus("فشل في تسوية الدفعة المعلقة تلقائياً.", "error");
             }
         }
 
-        // 3. تسجيل الدخول والتعرف على المستخدم
+        // 3. تسجيل الدخول
         async function authenticateUser() {
             try {
                 const scopes = ['username', 'payments'];
-                // يتم تمرير دالة onIncompletePaymentFound هنا كـ callback ثانية
                 const auth = await Pi.authenticate(scopes, onIncompletePaymentFound);
                 
                 document.getElementById('username').innerText = auth.user.username;
@@ -193,48 +193,59 @@
                 showStatus("جاهز لإتمام العملية", "success");
             } catch (err) {
                 console.error(err);
-                showStatus("فشل الاتصال بـ Pi SDK. تأكد من فتح الصفحة داخل متصفح Pi.", "error");
+                showStatus("يرجى فتح الصفحة من داخل متصفح Pi", "error");
                 document.getElementById('username').innerText = "زائر";
             }
         }
 
-        // 4. وظيفة الدفع الرئيسية
+        // 4. منطق إنشاء الدفع
         payButton.addEventListener('click', () => {
             const paymentData = {
                 amount: 1.0,
-                memo: "شراء منتج تجريبي عبر تطبيقنا",
-                metadata: { orderId: "INV-" + Date.now() } 
+                memo: "شراء منتج تجريبي",
+                metadata: { orderId: "ORDER_" + Date.now() } 
             };
 
             const callbacks = {
                 onReadyForServerApproval: async (paymentId) => {
-                    showStatus("بانتظار موافقة الخادم الخاص بنا...", "info");
-                    await fetch('/api/pi/approve', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ paymentId })
-                    });
+                    showStatus("انتظار موافقة الخادم...", "loading");
+                    try {
+                        await fetch('/api/pi/approve', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ paymentId })
+                        });
+                        showStatus("تمت الموافقة، يرجى التوقيع في محفظتك", "loading");
+                    } catch (e) {
+                        showStatus("خطأ في الاتصال بالخادم (Approve)", "error");
+                    }
                 },
                 onReadyForServerCompletion: async (paymentId, txid) => {
-                    showStatus("جاري توثيق المعاملة على البلوكشين...", "info");
-                    const res = await fetch('/api/pi/complete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ paymentId, txid })
-                    });
-                    
-                    if (res.ok) {
-                        showStatus("تم الدفع بنجاح! شكرًا لك.", "success");
-                        payButton.innerText = "تم الدفع ✅";
-                        payButton.disabled = true;
+                    showStatus("جاري تأكيد المعاملة...", "loading");
+                    try {
+                        const res = await fetch('/api/pi/complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ paymentId, txid })
+                        });
+
+                        if (res.ok) {
+                            showStatus("تمت عملية الدفع بنجاح!", "success");
+                            payButton.innerText = "تم الدفع ✅";
+                            payButton.disabled = true;
+                        } else {
+                            showStatus("خطأ أثناء تأكيد الدفع النهائي", "error");
+                        }
+                    } catch (e) {
+                        showStatus("خطأ في الاتصال بالخادم (Complete)", "error");
                     }
                 },
                 onCancel: (paymentId) => {
-                    showStatus("تم إلغاء عملية الدفع.", "error");
+                    showStatus("تم إلغاء العملية", "error");
                 },
                 onError: (error, payment) => {
-                    showStatus("حدث خطأ غير متوقع.", "error");
-                    console.error("Payment Error:", error);
+                    showStatus("حدث خطأ غير متوقع", "error");
+                    console.error(error);
                 }
             };
 
@@ -246,7 +257,7 @@
             statusMsg.className = "status " + type;
         }
 
-        // تشغيل عملية التحقق بمجرد تحميل الصفحة
+        // بدء التشغيل عند تحميل الصفحة
         window.onload = authenticateUser;
     </script>
 </body>
