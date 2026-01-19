@@ -3,12 +3,16 @@ exports.handler = async (event) => {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
   
+  const { paymentId, txid } = JSON.parse(event.body);
+  
+  if (!paymentId || !txid) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Missing paymentId or txid' }) };
+  }
+  
+  const PI_SECRET_KEY = process.env.PI_SECRET_KEY;
+  const PI_API_BASE = 'https://api.minepi.com/v2';
+  
   try {
-    const { paymentId, txid } = JSON.parse(event.body);
-    const PI_SECRET_KEY = process.env.PI_SECRET_KEY;
-    const PI_API_BASE = 'https://api.minepi.com/v2';
-
-    // نستخدم fetch مباشرة بدون أي استدعاء خارجي
     const response = await fetch(`${PI_API_BASE}/payments/${paymentId}/complete`, {
       method: 'POST',
       headers: {
@@ -18,16 +22,12 @@ exports.handler = async (event) => {
       body: JSON.stringify({ txid }),
     });
     
-    const data = await response.json();
-
     if (response.ok) {
-      return { statusCode: 200, body: JSON.stringify({ success: true, data }) };
+      const data = await response.json();
+      return { statusCode: 200, body: JSON.stringify({ completed: true, data }) };
     } else {
-      // إذا كانت الدفعة مكتملة مسبقاً، نعتبرها نجاحاً لتجاوز الخطأ
-      if (data.message && data.message.toLowerCase().includes("already complete")) {
-        return { statusCode: 200, body: JSON.stringify({ success: true, message: "Already processed" }) };
-      }
-      return { statusCode: response.status, body: JSON.stringify({ error: data }) };
+      const error = await response.json();
+      return { statusCode: response.status, body: JSON.stringify({ error }) };
     }
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
