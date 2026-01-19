@@ -6,9 +6,10 @@ exports.handler = async (event) => {
   try {
     const { paymentId, txid } = JSON.parse(event.body);
     const PI_SECRET_KEY = process.env.PI_SECRET_KEY;
+    const PI_API_BASE = 'https://api.minepi.com/v2';
 
-    // إرسال طلب التأكيد لـ Pi API
-    const response = await fetch(`https://api.minepi.com/v2/payments/${paymentId}/complete`, {
+    // نستخدم fetch مباشرة بدون أي استدعاء خارجي
+    const response = await fetch(`${PI_API_BASE}/payments/${paymentId}/complete`, {
       method: 'POST',
       headers: {
         'Authorization': `Key ${PI_SECRET_KEY}`,
@@ -22,7 +23,7 @@ exports.handler = async (event) => {
     if (response.ok) {
       return { statusCode: 200, body: JSON.stringify({ success: true, data }) };
     } else {
-      // إذا كانت الدفعة مكتملة مسبقاً، نعتبرها نجاحاً لتجاوز الخطأ في التطبيق
+      // إذا كانت الدفعة مكتملة مسبقاً، نعتبرها نجاحاً لتجاوز الخطأ
       if (data.message && data.message.toLowerCase().includes("already complete")) {
         return { statusCode: 200, body: JSON.stringify({ success: true, message: "Already processed" }) };
       }
