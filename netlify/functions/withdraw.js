@@ -1,19 +1,18 @@
 const StellarSdk = require('stellar-sdk');
 const { createClient } = require('@supabase/supabase-js');
 
-// 1. إعدادات قاعدة البيانات (يفضل وضعها في Environment Variables)
+// 1. إعدادات البيئة (تأكد من إضافتها في لوحة تحكم الاستضافة)
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xncapmzlwuisupkjlftb.supabase.co'; 
-// استخدم مفتاح الخدمة (Service Role) وليس المفتاح العام
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY; 
-
-// 2. إعدادات المحفظة والشبكة
-const APP_WALLET_SECRET = process.env.APP_WALLET_SECRET;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY; // مفتاح Service Role
+const APP_WALLET_SECRET = process.env.APP_WALLET_SECRET; // المفتاح السري الذي يبدأ بـ S
 const PI_HORIZON_URL = 'https://api.testnet.minepi.com';
 const NETWORK_PASSPHRASE = 'Pi Testnet';
 
+// تهيئة عميل Supabase بمفتاح الخدمة لتجاوز الـ RLS
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 exports.handler = async (event) => {
+  // السماح فقط بطلبات POST
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -22,12 +21,12 @@ exports.handler = async (event) => {
     const { uid, username, amount, walletAddress } = JSON.parse(event.body);
     const withdrawAmount = parseFloat(amount);
 
+    // التحقق الأولي من البيانات
     if (!uid || !amount || !walletAddress) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'بيانات ناقصة' }) };
+      return { statusCode: 400, body: JSON.stringify({ error: 'بيانات ناقصة: تأكد من إرسال المعرف والكمية والعنوان' }) };
     }
 
-    // --- خطوة 1: التحقق من الرصيد الحقيقي ---
-    // نقوم بجلب العمليات المسجلة فعلياً في الجداول
+    // --- خطوة 1: التحقق من الرصيد في الداتابيز (Security Check) ---
     const { data: donations } = await supabase.from('donations').select('amount').eq('pi_user_id', uid);
     const { data: withdrawals } = await supabase.from('withdrawals').select('amount').eq('pi_user_id', uid);
 
@@ -36,69 +35,97 @@ exports.handler = async (event) => {
     const currentBalance = totalIn - totalOut;
 
     if (currentBalance < withdrawAmount) {
-      console.log(`[AUTH] محاولة سحب مرفوضة: رصيد ${username} غير كافٍ. المتوفر: ${currentBalance}`);
-      return { statusCode: 400, body: JSON.stringify({ error: 'رصيد حسابك غير كافٍ' }) };
+      return { 
+        statusCode: 400, 
+        body: JSON.stringify({ error: `رصيد غير كافٍ. رصيدك الحالي: ${currentBalance.toFixed(2)} π` }) 
+      };
     }
 
-    // --- خطوة 2: تنفيذ التحويل على البلوكشين ---
-    const server = new StellarSdk.Horizon.Server(PI_HORIZON_URL); 
+    // --- خطوة 2: تهيئة مفاتيح المحفظة والاتصال بالبلوكشين ---
+    if (!APP_WALLET_SECRET) {
+      throw new Error("فشل السيرفر: APP_WALLET_SECRET غير معرف في الإعدادات.");
+    }
+
+    const server = new StellarSdk.Horizon.Server(PI_HORIZON_URL);
     const sourceKeys = StellarSdk.Keypair.fromSecret(APP_WALLET_SECRET);
     
-    // تحميل بيانات الحساب لضمان الحصول على أحدث Sequence Number
-    const sourceAccount = await server.loadAccount(sourceKeys.publicKey());
+    // تحميل بيانات الحساب لجلب الـ Sequence Number الحالي
+    let sourceAccount;
+    try {
+        sourceAccount = await server.loadAccount(sourceKeys.publicKey());
+    } catch (e) {
+        throw new Error("فشل تحميل بيانات محفظة النظام. تأكد أنها مفعلة وبها رصيد.");
+    }
 
+    // بناء المعاملة
     const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
-      fee: "100000", // الرسوم الثابتة لشبكة Pi
+      fee: "100000", // رسوم ثابتة لشبكة باي (0.01 Pi)
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(
         StellarSdk.Operation.payment({
           destination: walletAddress,
           asset: StellarSdk.Asset.native(),
-          amount: withdrawAmount.toFixed(7).toString(), 
+          amount: withdrawAmount.toFixed(7).toString(), // الدقة المطلوبة في Stellar
         })
       )
-      .setTimeout(60) // زيادة المهلة لتجنب أخطاء الشبكة
+      .setTimeout(60) // مهلة دقيقة للاستجابة
       .build();
 
+    // توقيع المعاملة
     transaction.sign(sourceKeys);
-    
-    console.log(`[BLOCKCHAIN] إرسال ${withdrawAmount} إلى ${walletAddress}...`);
-    const result = await server.submitTransaction(transaction);
-    console.log(`[SUCCESS] Hash: ${result.hash}`);
 
-    // --- خطوة 3: التسجيل النهائي في قاعدة البيانات ---
+    // إرسال المعاملة
+    console.log(`[PROCESS] إرسال ${withdrawAmount} إلى ${walletAddress}...`);
+    const result = await server.submitTransaction(transaction);
+    console.log(`[SUCCESS] Tx Hash: ${result.hash}`);
+
+    // --- خطوة 3: التسجيل في Supabase بعد نجاح التحويل ---
     const { error: dbError } = await supabase.from('withdrawals').insert([{
       pi_user_id: uid,
-      username: username,
+      username: username || 'unknown',
       amount: withdrawAmount,
       wallet_address: walletAddress,
       txid: result.hash,
-      status: 'completed' // إضافة حالة العملية
+      status: 'completed'
     }]);
 
-    if (dbError) throw new Error("فشل التسجيل في الداتابيز بعد التحويل: " + dbError.message);
+    if (dbError) {
+        // تنبيه: هنا تم التحويل فعلياً لكن فشل التسجيل، يجب مراجعة الـ Logs
+        console.error("[DB ERROR] تم التحويل لكن فشل التسجيل:", dbError.message);
+    }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, txid: result.hash })
+      body: JSON.stringify({ 
+        success: true, 
+        txid: result.hash,
+        message: 'تمت عملية السحب بنجاح' 
+      })
     };
 
   } catch (err) {
-    console.error("--- ERROR DEBUG ---");
-    let errorMsg = err.message;
+    console.error("--- CATCH ERROR ---");
+    let detailedError = err.message;
 
-    // استخراج تفاصيل الخطأ من Stellar Extras إذا وجدت
+    // استخراج أخطاء البلوكشين التفصيلية (مثل نقص الرصيد في محفظة السيرفر)
     if (err.response?.data?.extras?.result_codes) {
         const codes = err.response.data.extras.result_codes;
-        errorMsg = `Blockchain Error: ${codes.transaction} | Op: ${codes.operations?.[0]}`;
+        const opCode = codes.operations ? codes.operations[0] : '';
+        
+        if (opCode === 'op_underfunded') {
+            detailedError = "محفظة النظام (المصدر) لا تحتوي على رصيد كافٍ.";
+        } else if (codes.transaction === 'tx_bad_seq') {
+            detailedError = "خطأ في تسلسل المعاملات، يرجى المحاولة مرة أخرى.";
+        } else {
+            detailedError = `Blockchain Error: ${codes.transaction} (${opCode})`;
+        }
     }
 
-    console.error(errorMsg);
-
+    console.error(detailedError);
     return { 
       statusCode: 500, 
-      body: JSON.stringify({ error: 'فشل السحب', details: errorMsg }) 
+      body: JSON.stringify({ error: 'فشل السحب من جهة السيرفر', details: detailedError }) 
     };
   }
 };
