@@ -1,11 +1,11 @@
 const StellarSdk = require('stellar-sdk');
 const { createClient } = require('@supabase/supabase-js');
 
-// 1. إعدادات قاعدة البيانات
+// 1. إعدادات قاعدة البيانات (مباشرة في الكود)
 const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co'; 
-const SUPABASE_KEY = 'ضع_مفتاح_SUPABASE_SERVICE_ROLE_KEY_هنا'; 
+const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS'; // تأكد أنه مفتاح الخدمة (Service Role) إذا كنت ستعدل بيانات حساسة
 
-// 2. إعدادات المحفظة (من متغيرات البيئة)
+// 2. إعدادات المحفظة (من ENV)
 const APP_WALLET_SECRET = process.env.APP_WALLET_SECRET;
 
 // 3. إعدادات شبكة Pi Testnet
@@ -23,7 +23,11 @@ exports.handler = async (event) => {
     const { uid, username, amount, walletAddress } = JSON.parse(event.body);
     const withdrawAmount = parseFloat(amount);
 
-    // --- التحقق من الرصيد ---
+    if (!uid || !amount || !walletAddress) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'بيانات ناقصة' }) };
+    }
+
+    // --- خطوة 1: التحقق من الرصيد في السوبابيس ---
     const { data: donations } = await supabase.from('donations').select('amount').eq('pi_user_id', uid);
     const { data: withdrawals } = await supabase.from('withdrawals').select('amount').eq('pi_user_id', uid);
 
@@ -35,37 +39,35 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: JSON.stringify({ error: 'رصيد غير كافٍ' }) };
     }
 
-    // --- إعداد Stellar بالأسلوب المتوافق مع الإصدارات الجديدة والقديمة ---
+    // --- خطوة 2: تهيئة Stellar بشكل متوافق تماماً ---
+    // هذه الطريقة تحل خطأ "Server is not a constructor"
+    const server = new StellarSdk.Horizon.Server(PI_HORIZON_URL); 
     
-    // تأكد من الوصول إلى الكلاسات سواء كانت مباشرة أو داخل كائن StellarSdk
-    const HorizonServer = StellarSdk.Server || StellarSdk.Horizon.Server;
-    if (!HorizonServer) {
-        throw new Error("Could not find Stellar Server constructor in the SDK");
-    }
-
-    const server = new HorizonServer(PI_HORIZON_URL);
     const sourceKeys = StellarSdk.Keypair.fromSecret(APP_WALLET_SECRET);
     const sourceAccount = await server.loadAccount(sourceKeys.publicKey());
 
     // بناء المعاملة
     const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
-      fee: StellarSdk.BASE_FEE || "10000", 
+      fee: "10000", // 0.01 Pi
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(
         StellarSdk.Operation.payment({
           destination: walletAddress,
           asset: StellarSdk.Asset.native(),
-          amount: withdrawAmount.toFixed(7).toString(), 
+          amount: withdrawAmount.toFixed(7).toString(), // ضروري جداً 7 أرقام عشرية
         })
       )
       .setTimeout(30)
       .build();
 
+    // توقيع المعاملة
     transaction.sign(sourceKeys);
+
+    // إرسال المعاملة للبلوكشين
     const result = await server.submitTransaction(transaction);
 
-    // تسجيل العملية في Supabase
+    // --- خطوة 3: تسجيل العملية في قاعدة البيانات بعد النجاح ---
     await supabase.from('withdrawals').insert([{
       pi_user_id: uid,
       username: username,
@@ -80,13 +82,14 @@ exports.handler = async (event) => {
     };
 
   } catch (err) {
-    console.error("Final Error Log:", err);
+    console.error("Final Error Detail:", err);
+    let msg = err.message;
+    if (err.response && err.response.data) {
+        msg = JSON.stringify(err.response.data.extras.result_codes) || JSON.stringify(err.response.data);
+    }
     return { 
       statusCode: 500, 
-      body: JSON.stringify({ 
-        error: 'خطأ في عملية السحب', 
-        message: err.message 
-      }) 
+      body: JSON.stringify({ error: 'فشل في معالجة البلوكشين', details: msg }) 
     };
   }
 };
