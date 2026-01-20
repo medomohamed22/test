@@ -158,7 +158,7 @@
 
         const i18n = {
             en: {
-                welcome: "Pi Vault Pro", sub: "Secure your Pi Assets", login: "Secure Login",
+                welcome: "Nexus Wallet", sub: "Secure your Pi Assets", login: "Secure Login",
                 bal_lbl: "Available Balance", dep: "📥 Deposit", wit: "📤 Withdraw",
                 hist: "Recent Activity", dep_t: "Deposit Pi", wit_t: "Withdraw Pi",
                 conf_dep: "Confirm Deposit", conf_wit: "Confirm Withdrawal",
@@ -166,7 +166,7 @@
                 wait: "Processing...", low_bal: "Insufficient balance"
             },
             ar: {
-                welcome: "باي فولت برو", sub: "أمن أصولك من عملة باي", login: "دخول آمن",
+                welcome: "محفظة نيكسوس", sub: "أمن أصولك من عملة باي", login: "دخول آمن",
                 bal_lbl: "الرصيد المتاح", dep: "📥 إيداع", wit: "📤 سحب",
                 hist: "العمليات الأخيرة", dep_t: "إيداع باي", wit_t: "سحب باي",
                 conf_dep: "تأكيد الإيداع", conf_wit: "تأكيد السحب",
@@ -228,14 +228,14 @@
             btn.disabled = true; btn.innerText = i18n[currentLang].wait;
 
             try {
-                await window.Pi.createPayment({ amount: amt, memo: "Vault Deposit", metadata: { type: "deposit" } }, {
+                await window.Pi.createPayment({ amount: amt, memo: "Deposit to Nexus Wallet", metadata: { type: "deposit" } }, {
                     onReadyForServerApproval: (id) => fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({ paymentId: id }) }),
                     onReadyForServerCompletion: async (id, txid) => {
                         await _db.from('donations').insert([{ pi_user_id: user.uid, username: user.username, amount: amt, payment_id: id }]);
                         await fetch('/api/pi/complete', { method: 'POST', body: JSON.stringify({ paymentId: id, txid: txid }) });
                         alert(i18n[currentLang].success_dep);
                         closeAllModals();
-                        refreshData(); // تحديث فوري بدون خروج
+                        refreshData(); 
                     },
                     onCancel: () => { btn.disabled = false; btn.innerText = i18n[currentLang].conf_dep; },
                     onError: () => { btn.disabled = false; }
@@ -262,7 +262,7 @@
                 if (res.ok) {
                     alert(i18n[currentLang].success_wit);
                     closeAllModals();
-                    refreshData(); // تحديث فوري بدون خروج
+                    refreshData();
                 } else {
                     const err = await res.json();
                     alert(err.details);
