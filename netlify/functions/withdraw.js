@@ -42,26 +42,24 @@ exports.handler = async (event) => {
     }
 
     // --- خطوة 2: تهيئة شبكة Pi (Stellar) ---
-    // استخدام Horizon.Server لضمان التوافق مع الإصدارات الحديثة
     const server = new StellarSdk.Horizon.Server(PI_HORIZON_URL); 
     
-    // استخراج المفاتيح من الـ Secret Key
     if (!APP_WALLET_SECRET) throw new Error("APP_WALLET_SECRET is not defined in environment variables");
     const sourceKeys = StellarSdk.Keypair.fromSecret(APP_WALLET_SECRET);
     
-    // تحميل بيانات حساب التطبيق (المحفظة المرسلة)
+    // تحميل بيانات حساب التطبيق
     const sourceAccount = await server.loadAccount(sourceKeys.publicKey());
 
-    // بناء المعاملة
+    // بناء المعاملة مع الرسوم المحدثة (0.01 Pi)
     const transaction = new StellarSdk.TransactionBuilder(sourceAccount, {
-      fee: "10000", // الرسوم الافتراضية
+      fee: "100000", // تم التعديل لحل خطأ tx_insufficient_fee
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(
         StellarSdk.Operation.payment({
           destination: walletAddress,
           asset: StellarSdk.Asset.native(),
-          amount: withdrawAmount.toFixed(7).toString(), // ضروري لشبكة Stellar
+          amount: withdrawAmount.toFixed(7).toString(),
         })
       )
       .setTimeout(30)
@@ -104,11 +102,11 @@ exports.handler = async (event) => {
         const opCodes = codes.operations ? codes.operations.join(', ') : 'no_op_code';
         errorResponse.details = `Blockchain Error: ${codes.transaction} (${opCodes})`;
         
-        // شرح الأخطاء الشائعة للمستخدم
-        if (opCodes.includes('op_underfunded')) {
-            errorResponse.error = 'محفظة النظام لا تحتوي على رصيد كافٍ حالياً';
-        } else if (opCodes.includes('op_no_destination')) {
-            errorResponse.error = 'محفظة المستلم غير مفعلة أو غير موجودة';
+        // تنبيهات مخصصة للأخطاء
+        if (codes.transaction === 'tx_insufficient_fee') {
+            errorResponse.error = 'رسوم الشبكة مرتفعة حالياً، حاول مرة أخرى';
+        } else if (opCodes.includes('op_underfunded')) {
+            errorResponse.error = 'محفظة النظام تحتاج شحن رصيد';
         }
     }
 
