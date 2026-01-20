@@ -21,6 +21,7 @@
             min-height: 100vh; padding: 20px; 
         }
 
+        /* شاشة الدخول والشعار العائم */
         #login-overlay {
             position: fixed; inset: 0; background: var(--dark-bg);
             z-index: 9999; display: flex; flex-direction: column;
@@ -43,6 +44,7 @@
             50% { transform: translateY(-20px) rotate(10deg); }
         }
 
+        /* زر تبديل اللغة */
         .lang-switch {
             position: fixed; top: 20px; right: 20px;
             background: var(--glass); border: 1px solid rgba(255,255,255,0.1);
@@ -50,6 +52,7 @@
             cursor: pointer; z-index: 10000; font-size: 1.2rem;
         }
 
+        /* البطاقة */
         .vault-card {
             background: linear-gradient(135deg, var(--primary), #a29bfe);
             border-radius: 24px; padding: 30px; height: 200px;
@@ -66,6 +69,7 @@
             padding: 20px; border-radius: 20px; text-align: center; cursor: pointer;
         }
 
+        /* المودال */
         .modal {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
@@ -82,8 +86,6 @@
             text-align: center; font-size: 1.1rem;
         }
 
-        .fee-info { text-align: center; color: #a29bfe; font-size: 0.85rem; margin-bottom: 15px; }
-
         .confirm-btn {
             width: 100%; padding: 16px; border-radius: 15px; border: none;
             background: var(--primary); color: white; font-weight: 700;
@@ -95,6 +97,7 @@
             border-bottom: 1px solid rgba(255,255,255,0.05);
         }
 
+        /* RTL Support */
         [dir="rtl"] .lang-switch { right: auto; left: 20px; }
     </style>
 </head>
@@ -142,7 +145,6 @@
             <h2 id="t-wit-title" style="margin-bottom: 20px; text-align: center;">Withdraw Pi</h2>
             <input type="text" id="wit-address" placeholder="Wallet Address G...">
             <input type="number" id="wit-amount" placeholder="Amount">
-            <div class="fee-info" id="t-fee-info">Fee: 0.05 π | Total deduction: 0.00 π</div>
             <button id="btn-wit" class="confirm-btn" style="background: #ef4444;" onclick="executeWithdraw()">Confirm Withdrawal</button>
         </div>
     </div>
@@ -151,8 +153,6 @@
         const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
         const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        
-        const WITHDRAW_FEE = 0.05;
         let user = null;
         let currentLang = 'en';
 
@@ -163,8 +163,7 @@
                 hist: "Recent Activity", dep_t: "Deposit Pi", wit_t: "Withdraw Pi",
                 conf_dep: "Confirm Deposit", conf_wit: "Confirm Withdrawal",
                 success_dep: "Deposit Successful!", success_wit: "Withdrawal Requested!",
-                wait: "Processing...", low_bal: "Insufficient balance (incl. fee)",
-                fee_lbl: "Fee: 0.05 π | Total: "
+                wait: "Processing...", low_bal: "Insufficient balance"
             },
             ar: {
                 welcome: "محفظة نيكسوس", sub: "أمن أصولك من عملة باي", login: "دخول آمن",
@@ -172,16 +171,9 @@
                 hist: "العمليات الأخيرة", dep_t: "إيداع باي", wit_t: "سحب باي",
                 conf_dep: "تأكيد الإيداع", conf_wit: "تأكيد السحب",
                 success_dep: "تم الإيداع بنجاح!", success_wit: "تم طلب السحب!",
-                wait: "جاري المعالجة...", low_bal: "الرصيد غير كافٍ (بما في ذلك الرسوم)",
-                fee_lbl: "الرسوم: 0.05 π | الإجمالي: "
+                wait: "جاري المعالجة...", low_bal: "الرصيد غير كافٍ"
             }
         };
-
-        document.getElementById('wit-amount').addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value) || 0;
-            const total = val > 0 ? (val + WITHDRAW_FEE).toFixed(2) : "0.00";
-            document.getElementById('t-fee-info').innerText = `${i18n[currentLang].fee_lbl} ${total} π`;
-        });
 
         function toggleLang() {
             currentLang = currentLang === 'en' ? 'ar' : 'en';
@@ -198,9 +190,6 @@
             document.getElementById('t-wit-title').innerText = t.wit_t;
             document.getElementById('btn-dep').innerText = t.conf_dep;
             document.getElementById('btn-wit').innerText = t.conf_wit;
-            const val = parseFloat(document.getElementById('wit-amount').value) || 0;
-            const total = val > 0 ? (val + WITHDRAW_FEE).toFixed(2) : "0.00";
-            document.getElementById('t-fee-info').innerText = `${t.fee_lbl} ${total} π`;
         }
 
         async function login() {
@@ -217,9 +206,11 @@
             if (!user) return;
             const { data: d } = await _db.from('donations').select('*').eq('pi_user_id', user.uid);
             const { data: w } = await _db.from('withdrawals').select('*').eq('pi_user_id', user.uid);
+            
             const totalIn = d?.reduce((s, r) => s + parseFloat(r.amount), 0) || 0;
             const totalOut = w?.reduce((s, r) => s + parseFloat(r.amount), 0) || 0;
             document.getElementById('main-balance').innerText = (totalIn - totalOut).toFixed(2);
+            
             const list = document.getElementById('history-list');
             const all = [...(d || []), ...(w || [])].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
             list.innerHTML = all.slice(0, 5).map(i => `
@@ -235,6 +226,7 @@
             if (!amt || amt <= 0) return;
             const btn = document.getElementById('btn-dep');
             btn.disabled = true; btn.innerText = i18n[currentLang].wait;
+
             try {
                 await window.Pi.createPayment({ amount: amt, memo: "Deposit to Nexus Wallet", metadata: { type: "deposit" } }, {
                     onReadyForServerApproval: (id) => fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({ paymentId: id }) }),
@@ -253,55 +245,30 @@
 
         async function executeWithdraw() {
             const addr = document.getElementById('wit-address').value;
-            const netAmt = parseFloat(document.getElementById('wit-amount').value);
-            const totalToDeduct = netAmt + WITHDRAW_FEE;
-            const currentBal = parseFloat(document.getElementById('main-balance').innerText);
+            const amt = parseFloat(document.getElementById('wit-amount').value);
+            const bal = parseFloat(document.getElementById('main-balance').innerText);
 
-            if (!addr || netAmt <= 0) return;
-            if (totalToDeduct > currentBal) return alert(i18n[currentLang].low_bal);
+            if (!addr || amt <= 0) return;
+            if (amt > bal) return alert(i18n[currentLang].low_bal);
 
             const btn = document.getElementById('btn-wit');
             btn.disabled = true; btn.innerText = i18n[currentLang].wait;
 
             try {
-                // 1. طلب التنفيذ من الباك اند (ليتم على البلوكتشين)
-                const response = await fetch('/api/withdraw', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        uid: user.uid,
-                        username: user.username,
-                        amount: netAmt,      // المبلغ المرسل للمستخدم
-                        fee: WITHDRAW_FEE,   // رسوم الموقع
-                        address: addr        // محفظة المستخدم
-                    })
+                const res = await fetch('/api/withdraw', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ uid: user.uid, username: user.username, amount: amt, walletAddress: addr })
                 });
-
-                if (response.ok) {
-                    // 2. إذا نجح الباك اند، نسجل الخصم في Supabase (المبلغ + الرسوم)
-                    const { error } = await _db.from('withdrawals').insert([{ 
-                        pi_user_id: user.uid, 
-                        username: user.username, 
-                        amount: totalToDeduct, 
-                        wallet_address: addr 
-                    }]);
-
-                    if (error) throw error;
-
+                if (res.ok) {
                     alert(i18n[currentLang].success_wit);
                     closeAllModals();
                     refreshData();
                 } else {
-                    const result = await response.json();
-                    alert("Blockchain Error: " + (result.details || "Failed"));
+                    const err = await res.json();
+                    alert(err.details);
                 }
-            } catch (e) {
-                console.error(e);
-                alert("System Error: " + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = i18n[currentLang].conf_wit;
-            }
+            } catch (e) { alert("Server Error"); }
+            btn.disabled = false;
         }
 
         function openModal(type) { document.getElementById(`${type}-modal`).style.display = 'flex'; }
