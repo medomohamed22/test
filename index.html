@@ -557,142 +557,164 @@
     <div class="t2" id="toastT2">—</div>
   </div>
 
-  <script>
-    // =========================
-    // نفس منطق كودك بالظبط
-    // =========================
-    const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
-    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<script>
+  // =========================
+  // Supabase
+  // =========================
+  const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
+  const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    const Pi = window.Pi;
-    let currentUser = null;
-    let userBalance = 0;
-    let lastPaymentId = null;
+  // =========================
+  // Pi SDK - Safe Init
+  // =========================
+  function getPi() {
+    return window.Pi || window.pi || null;
+  }
 
-    const $ = (id) => document.getElementById(id);
+  function isPiBrowser() {
+    // Pi Browser عادة بيضيف كده، بس مش دايمًا، فبنستخدم أكتر من check
+    const ua = navigator.userAgent || "";
+    return /PiBrowser/i.test(ua) || !!getPi();
+  }
 
-    function toast(title, msg){
-      $("toastT1").innerText = title || "";
-      $("toastT2").innerText = msg || "";
-      $("toast").classList.add("show");
-      clearTimeout(window.__t);
-      window.__t = setTimeout(()=> $("toast").classList.remove("show"), 3200);
+  async function ensurePiReady() {
+    const Pi = getPi();
+
+    if (!Pi) {
+      throw new Error("PI_SDK_NOT_FOUND");
     }
 
-    function shortId(s){
-      if(!s) return "—";
-      if(s.length <= 18) return s;
-      return s.slice(0,8) + "…" + s.slice(-8);
-    }
-
-    function quickFill(x){
-      const el = $("dep-amount");
-      const cur = parseFloat(el.value || "0") || 0;
-      el.value = (cur + x).toFixed(2);
-    }
-
-    function fillMax(){
-      $("with-amount").value = userBalance > 0 ? userBalance.toFixed(2) : "";
-    }
-
-    function statusClass(st){
-      const s = (st || "").toLowerCase();
-      if(s === "completed" || s === "success") return "ok";
-      if(s === "pending") return "pend";
-      if(s === "failed" || s === "error") return "fail";
-      return "";
-    }
-
-    function formatTime(iso){
-      if(!iso) return "";
-      const d = new Date(iso);
-      const hh = String(d.getHours()).padStart(2,'0');
-      const mm = String(d.getMinutes()).padStart(2,'0');
-      const dd = String(d.getDate()).padStart(2,'0');
-      const mo = String(d.getMonth()+1).padStart(2,'0');
-      return `${dd}/${mo} ${hh}:${mm}`;
-    }
-
-    // 1) التعامل مع المدفوعات غير المكتملة (نفس كودك)
-    const onIncompletePaymentFound = async (payment) => {
-      console.log("Incomplete payment found", payment);
-      try{
-        if(!payment?.identifier || !payment?.transaction?.txid) return;
-        await fetch('/api/pi/complete', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ paymentId: payment.identifier, txid: payment.transaction.txid })
-        });
-
-        // تحديث DB لو عندك payment_id/txid/status (لو مش موجودين هيتجاهل)
-        _supabase.from('donations')
-          .update({ status:'completed', txid: payment.transaction.txid })
-          .eq('payment_id', payment.identifier);
-
-      }catch(e){
-        console.log("onIncomplete error", e);
-      }
-    };
-
-    // 2) تسجيل الدخول (نفس الفلو)
-    async function login(){
-      try{
-        const auth = await Pi.authenticate(['username','payments'], onIncompletePaymentFound);
-        currentUser = auth.user;
-
-        $("login-box").style.display = "none";
-        $("app").style.display = "block";
-        $("userPill").style.display = "flex";
-        $("u-name").innerText = `@${currentUser.username}`;
-
-        toast("تم تسجيل الدخول", `أهلًا ${currentUser.username}`);
-        await fetchUserBalance();
-        await loadHistory();
-      }catch(e){
-        alert("افتح الموقع داخل متصفح Pi");
+    // لو init مش موجود، نكمل (بعض البيئات)
+    if (typeof Pi.init === "function") {
+      try {
+        // مهم: init قبل authenticate
+        Pi.init({ version: "2.0" });
+      } catch (e) {
+        // لو اتعمل init قبل كده، بعض النسخ بترمي error بسيط - نتجاهله
       }
     }
 
-    // 3) جلب الرصيد من Supabase (نفس كودك لكن محسّن: يحسب completed فقط لو فيه status)
-    async function fetchUserBalance(){
-      if(!currentUser) return;
-
-      const { data: dons } = await _supabase.from('donations').select('amount,status').eq('pi_user_id', currentUser.uid);
-      const { data: wits } = await _supabase.from('withdrawals').select('amount,status').eq('pi_user_id', currentUser.uid);
-
-      const totalD = (dons || [])
-        .filter(x => !x.status || x.status === 'completed')
-        .reduce((s,d)=> s + parseFloat(d.amount), 0) || 0;
-
-      const totalW = (wits || [])
-        .filter(x => !x.status || x.status === 'completed')
-        .reduce((s,w)=> s + parseFloat(w.amount), 0) || 0;
-
-      userBalance = totalD - totalW;
-
-      $("user-balance").innerText = userBalance.toFixed(2);
+    // تأكد إن authenticate موجود
+    if (typeof Pi.authenticate !== "function") {
+      throw new Error("PI_AUTH_NOT_AVAILABLE");
     }
 
-    // 4) إيداع (نفس منطقك بالظبط: approve ثم complete ثم insert donations)
-    function deposit(){
-      if(!currentUser) return alert("سجل دخولك أولاً");
+    return Pi;
+  }
 
-      const amount = parseFloat($("dep-amount").value);
-      if(!amount || amount <= 0) return alert("أدخل مبلغ صحيح");
+  // =========================
+  // App State
+  // =========================
+  let currentUser = null;
+  let userBalance = 0;
+  let lastPaymentId = null;
 
-      const btn = $("btn-dep");
-      btn.disabled = true;
-      btn.innerText = "جاري المعالجة...";
+  const $ = (id) => document.getElementById(id);
 
-      Pi.createPayment({
-        amount: amount,
-        memo: "إيداع في Pi Vault",
-        metadata: { action:"deposit" }
-      }, {
-        onReadyForServerApproval: (paymentId) => {
-          // حفظ آخر paymentId للعرض
-          lastPaymentId = paymentId;
-          $("last-payment").innerText = shortId(paymentId);
+  function toast(title, msg){
+    const t = $("toast");
+    if(!t){ alert(title + "\n" + msg); return; }
+    $("toastT1").innerText = title || "";
+    $("toastT2").innerText = msg || "";
+    t.classList.add("show");
+    clearTimeout(window.__t);
+    window.__t = setTimeout(()=> t.classList.remove("show"), 3200);
+  }
 
-          // نفس كودك: appr
+  function shortId(s){
+    if(!s) return "—";
+    if(s.length <= 18) return s;
+    return s.slice(0,8) + "…" + s.slice(-8);
+  }
+
+  // =========================
+  // Incomplete Payments
+  // =========================
+  const onIncompletePaymentFound = async (payment) => {
+    try {
+      if (!payment?.identifier || !payment?.transaction?.txid) return;
+
+      await fetch('/api/pi/complete', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ paymentId: payment.identifier, txid: payment.transaction.txid })
+      });
+
+      // لو عندك أعمدة status/txid/payment_id هيتحدّث، لو لأ مش هيبوّظ
+      _supabase.from('donations')
+        .update({ status:'completed', txid: payment.transaction.txid })
+        .eq('payment_id', payment.identifier);
+
+    } catch (e) {
+      console.log("onIncomplete error", e);
+    }
+  };
+
+  // =========================
+  // ✅ Login (Fixed)
+  // =========================
+  async function login(){
+    try{
+      if (!isPiBrowser()) {
+        alert("افتح الموقع داخل Pi Browser علشان تسجيل الدخول يشتغل.");
+        return;
+      }
+
+      // Ensure Pi is ready
+      const Pi = await ensurePiReady();
+
+      // بعض النسخ بتحب await هنا
+      const auth = await Pi.authenticate(
+        ['username','payments'],
+        onIncompletePaymentFound
+      );
+
+      if (!auth || !auth.user) {
+        throw new Error("AUTH_EMPTY");
+      }
+
+      currentUser = auth.user;
+
+      // UI
+      $("login-box").style.display = "none";
+      $("app").style.display = "block";
+      const pill = $("userPill");
+      if (pill) pill.style.display = "flex";
+      $("u-name").innerText = `@${currentUser.username}`;
+
+      toast("تم تسجيل الدخول", `أهلًا ${currentUser.username}`);
+      await fetchUserBalance();
+      await loadHistory();
+
+    }catch(e){
+      console.log("login error:", e);
+
+      if (String(e?.message) === "PI_SDK_NOT_FOUND") {
+        alert("Pi SDK مش متاح. افتح الصفحة من Pi Browser أو تأكد إن sdk.minepi.com شغال.");
+      } else if (String(e?.message) === "PI_AUTH_NOT_AVAILABLE") {
+        alert("Pi.authenticate مش متاح. جرّب تحدث Pi Browser أو افتح الصفحة من داخل Pi Browser.");
+      } else {
+        alert("فشل تسجيل الدخول. افتح من Pi Browser وجرب تاني.");
+      }
+    }
+  }
+
+  // =========================
+  // Balance + History (زي ما كانوا)
+  // =========================
+  async function fetchUserBalance(){
+    if(!currentUser) return;
+
+    const { data: dons } = await _supabase.from('donations').select('amount,status').eq('pi_user_id', currentUser.uid);
+    const { data: wits } = await _supabase.from('withdrawals').select('amount,status').eq('pi_user_id', currentUser.uid);
+
+    const totalD = (dons || [])
+      .filter(x => !x.status || x.status === 'completed')
+      .reduce((s,d)=> s + parseFloat(d.amount), 0) || 0;
+
+    const totalW = (wits || [])
+      .filter(x => !x.status || x.status === 'completed')
+      .reduce((s,w)=> s + parseFloat(w.amount), 0) || 0;
+
+    userBalance 
