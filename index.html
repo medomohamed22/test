@@ -2,335 +2,715 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pi Vault - الربط الكامل</title>
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;700&display=swap" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Pi Vault</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;700;800&display=swap" rel="stylesheet">
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
-    :root { --pi-p: #6d28d9; --pi-g: linear-gradient(135deg, #6d28d9 0%, #4c1d95 100%); --bg: #f3f4f6; --success: #10b981; --danger: #ef4444; }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Tajawal', sans-serif; }
-    body { background-color: var(--bg); color: #1f2937; padding-bottom: 40px; }
-    header { background: white; padding: 15px 5%; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-    .hero { background: var(--pi-g); color: white; padding: 40px 20px; text-align: center; border-bottom-left-radius: 40px; border-bottom-right-radius: 40px; margin-bottom: 25px; }
-    .bal-val { font-size: 3rem; font-weight: 800; margin: 10px 0; }
-    .container { max-width: 450px; margin: 0 auto; padding: 0 15px; }
-    .card { background: white; border-radius: 20px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
-    input { width: 100%; padding: 12px; border-radius: 12px; border: 1.5px solid #eee; margin-bottom: 10px; outline: none; text-align: center; font-size: 1rem; }
-    .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: 700; cursor: pointer; transition: 0.2s; }
-    .btn:disabled { opacity: .6; cursor: not-allowed; }
-    .btn-dep { background: var(--pi-p); color: white; }
-    .btn-wit { background: white; border: 2px solid #ddd; color: #555; }
-    .hist-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f9f9f9; }
-    .plus { color: var(--success); font-weight: bold; }
-    .minus { color: var(--danger); font-weight: bold; }
-    .small { font-size: .85rem; opacity: .8; margin-top: 6px; }
+    :root{
+      --p:#6d28d9;
+      --p2:#4c1d95;
+      --bg:#0b0b14;
+      --card:rgba(255,255,255,.06);
+      --card2:rgba(255,255,255,.09);
+      --stroke:rgba(255,255,255,.12);
+      --text:#f4f4ff;
+      --muted:rgba(244,244,255,.72);
+      --good:#10b981;
+      --bad:#ef4444;
+      --warn:#f59e0b;
+
+      --shadow: 0 18px 60px rgba(0,0,0,.35);
+      --r1:22px;
+      --r2:18px;
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family:'Tajawal',system-ui,-apple-system,Segoe UI,Arial;
+      color:var(--text);
+      background:
+        radial-gradient(900px 500px at 10% 0%, rgba(109,40,217,.35), transparent 60%),
+        radial-gradient(900px 500px at 100% 20%, rgba(76,29,149,.35), transparent 60%),
+        radial-gradient(700px 500px at 50% 100%, rgba(245,158,11,.12), transparent 55%),
+        var(--bg);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .appShell{
+      min-height:100%;
+      display:flex;
+      justify-content:center;
+    }
+
+    .wrap{
+      width:min(480px, 100%);
+      padding: 18px 14px 28px;
+    }
+
+    /* Top bar */
+    .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 10px 10px 12px;
+      backdrop-filter: blur(14px);
+      background: linear-gradient(to bottom, rgba(11,11,20,.78), rgba(11,11,20,.32));
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      margin: -18px -14px 14px;
+    }
+
+    .topbarInner{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 6px 10px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+
+    .logo{
+      width:38px; height:38px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--p) 0%, var(--p2) 100%);
+      box-shadow: 0 16px 40px rgba(109,40,217,.35);
+      display:grid;
+      place-items:center;
+      border: 1px solid rgba(255,255,255,.18);
+    }
+    .logo span{ font-size:18px; }
+
+    .userPill{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.10);
+      color: var(--muted);
+      font-size: 12.5px;
+      max-width: 58%;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dot{
+      width:8px;height:8px;border-radius:50%;
+      background: var(--good);
+      box-shadow: 0 0 0 5px rgba(16,185,129,.12);
+      flex:0 0 auto;
+    }
+
+    /* Hero */
+    .hero{
+      border-radius: var(--r1);
+      background:
+        radial-gradient(800px 240px at 30% 0%, rgba(109,40,217,.55), transparent 60%),
+        radial-gradient(800px 240px at 100% 0%, rgba(76,29,149,.55), transparent 60%),
+        linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: var(--shadow);
+      padding: 18px 16px 16px;
+      overflow:hidden;
+      position:relative;
+    }
+    .hero:before{
+      content:"";
+      position:absolute;
+      inset:-120px -120px auto auto;
+      width:280px;height:280px;
+      background: radial-gradient(circle, rgba(250,204,21,.24), transparent 60%);
+      filter: blur(2px);
+      transform: rotate(18deg);
+      pointer-events:none;
+    }
+    .heroTop{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      position:relative;
+    }
+    .heroTitle{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    .heroTitle small{
+      color: var(--muted);
+      font-weight:500;
+      font-size: 13px;
+    }
+    .heroTitle strong{
+      font-size: 18px;
+      font-weight:800;
+      line-height:1.15;
+    }
+
+    .chip{
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(250,204,21,.12);
+      border:1px solid rgba(250,204,21,.24);
+      color: rgba(255,235,180,.95);
+      font-size:12px;
+      font-weight:700;
+      flex:0 0 auto;
+      text-align:center;
+    }
+
+    .balance{
+      margin-top: 14px;
+      display:flex;
+      align-items:baseline;
+      gap:10px;
+      position:relative;
+    }
+    .pi{
+      font-weight:900;
+      font-size: 26px;
+      color: rgba(250,204,21,.95);
+    }
+    .balNum{
+      font-weight:900;
+      font-size: 44px;
+      letter-spacing:.5px;
+      line-height:1;
+    }
+    .subRow{
+      margin-top: 10px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+    .subRow .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      direction:ltr;
+      unicode-bidi:plaintext;
+      max-width: 65%;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-align:left;
+    }
+
+    /* Layout cards */
+    .grid{
+      margin-top: 14px;
+      display:flex;
+      flex-direction:column;
+      gap: 12px;
+    }
+
+    .card{
+      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: var(--r1);
+      box-shadow: 0 10px 40px rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+
+    .cardHd{
+      padding: 14px 14px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .cardHd h3{
+      margin:0;
+      font-size: 14px;
+      font-weight:800;
+      letter-spacing:.2px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .badge{
+      font-size: 11px;
+      color: var(--muted);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,.05);
+    }
+
+    .cardBd{
+      padding: 12px 14px 14px;
+    }
+
+    .row{
+      display:flex;
+      gap:10px;
+    }
+    .row > *{ flex:1; }
+
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:7px;
+      margin-bottom: 10px;
+    }
+    .label{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight:500;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+    }
+    .label .hint{ opacity:.9; font-size:11.5px; }
+
+    input{
+      width:100%;
+      padding: 13px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      outline:none;
+      font-size: 14.5px;
+      text-align:center;
+      transition:.18s;
+    }
+    input:focus{
+      border-color: rgba(109,40,217,.55);
+      box-shadow: 0 0 0 5px rgba(109,40,217,.18);
+    }
+    input::placeholder{ color: rgba(244,244,255,.42); }
+
+    .btns{
+      display:flex;
+      gap:10px;
+      margin-top: 6px;
+    }
+
+    button{
+      border:none;
+      cursor:pointer;
+      font-weight:900;
+      border-radius: 16px;
+      padding: 13px 12px;
+      font-size: 14px;
+      transition: transform .08s, opacity .18s, box-shadow .18s;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button:active{ transform: translateY(1px); }
+    button:disabled{ opacity:.55; cursor:not-allowed; }
+
+    .btnPrimary{
+      background: linear-gradient(135deg, var(--p) 0%, var(--p2) 100%);
+      color:white;
+      box-shadow: 0 16px 45px rgba(109,40,217,.28);
+      border: 1px solid rgba(255,255,255,.10);
+      flex:1;
+    }
+    .btnGhost{
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,.12);
+      flex:1;
+    }
+
+    .msg{
+      margin-top:10px;
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height:1.5;
+    }
+    .msg b{ color: var(--text); }
+
+    /* History */
+    .hist{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+    }
+    .histItem{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 12px 12px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .histLeft{
+      display:flex;
+      flex-direction:column;
+      gap:3px;
+      min-width: 0;
+    }
+    .histLeft .t{
+      font-weight:800;
+      font-size: 13.5px;
+      display:flex;
+      align-items:center;
+      gap:7px;
+    }
+    .status{
+      font-size: 11.5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      color: var(--muted);
+      background: rgba(255,255,255,.05);
+      font-weight:700;
+    }
+    .status.ok{ border-color: rgba(16,185,129,.22); background: rgba(16,185,129,.10); color: rgba(210,255,235,.9); }
+    .status.pend{ border-color: rgba(245,158,11,.25); background: rgba(245,158,11,.10); color: rgba(255,241,210,.92); }
+    .status.fail{ border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.10); color: rgba(255,220,220,.92); }
+    .histLeft .d{
+      color: var(--muted);
+      font-size: 12px;
+      max-width: 240px;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .amt{
+      font-weight:900;
+      font-size: 14px;
+      direction:ltr;
+      unicode-bidi:plaintext;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      text-align:left;
+      flex:0 0 auto;
+    }
+    .amt.plus{ color: rgba(16,185,129,.95); }
+    .amt.minus{ color: rgba(239,68,68,.95); }
+
+    /* Login */
+    .login{
+      min-height: calc(100vh - 40px);
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:12px;
+      text-align:center;
+      padding: 20px 6px;
+    }
+    .login h1{
+      margin:0;
+      font-weight: 900;
+      font-size: 26px;
+      letter-spacing: .3px;
+    }
+    .login p{
+      margin:0;
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height:1.6;
+    }
+    .login .bigBtn{
+      width: 100%;
+      padding: 14px 14px;
+      border-radius: 18px;
+      margin-top: 10px;
+    }
+
+    /* Toast */
+    .toast{
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 18px;
+      width: min(480px, calc(100% - 24px));
+      background: rgba(10,10,18,.65);
+      border: 1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(12px);
+      border-radius: 16px;
+      padding: 12px 14px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.45);
+      display:none;
+      z-index: 50;
+    }
+    .toast.show{ display:block; animation: pop .18s ease-out; }
+    @keyframes pop{ from{ transform:translateX(-50%) translateY(10px); opacity:.0; } to{ transform:translateX(-50%) translateY(0); opacity:1; } }
+    .toast .t1{ font-weight:900; font-size: 13.5px; }
+    .toast .t2{ margin-top: 4px; color: var(--muted); font-size: 12.5px; line-height:1.5; }
+
+    /* Small devices tweaks */
+    @media (max-width: 360px){
+      .balNum{ font-size: 40px; }
+      .logo{ width:36px;height:36px; border-radius: 13px; }
+    }
   </style>
 </head>
 <body>
+  <div class="appShell">
+    <div class="wrap">
 
-<header>
-  <div style="font-weight: 800; color: var(--pi-p);">Pi Vault</div>
-  <div id="u-name" style="font-size: 0.8rem;"></div>
-</header>
-
-<div id="app" style="display: none;">
-  <div class="hero">
-    <div style="opacity: 0.8; font-size: 0.9rem;">إجمالي رصيدك المحفوظ</div>
-    <div class="bal-val"><span style="color: #facc15;">π</span> <span id="user-balance">0.00</span></div>
-    <div id="pay-hint" class="small"></div>
-  </div>
-
-  <div class="container">
-    <div class="card">
-      <h4 style="margin-bottom: 15px;">📥 إيداع (Donation Table)</h4>
-      <input type="number" id="d-amount" placeholder="0.00" step="0.01" min="0">
-      <button class="btn btn-dep" id="btn-d" onclick="handleDeposit()">تعبئة الرصيد</button>
-    </div>
-
-    <div class="card">
-      <h4 style="margin-bottom: 15px;">📤 سحب (Withdraw Table)</h4>
-      <input type="text" id="w-addr" placeholder="عنوان المحفظة G...">
-      <input type="number" id="w-amount" placeholder="الكمية π" step="0.01" min="0">
-      <button class="btn btn-wit" id="btn-w" onclick="handleWithdraw()">سحب الآن</button>
-    </div>
-
-    <div class="card">
-      <h4 style="margin-bottom: 15px;">🕒 سجل الحركات</h4>
-      <div id="history-box"></div>
-    </div>
-  </div>
-</div>
-
-<div id="login-box" style="text-align: center; margin-top: 100px;">
-  <button class="btn btn-dep" style="width: 200px;" onclick="initAuth()">دخول Pi Browser</button>
-</div>
-
-<script>
-  const S_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
-  const S_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
-  const _db = supabase.createClient(S_URL, S_KEY);
-
-  const Pi = window.Pi;
-  let user = null;
-
-  // ✅ ID آخر عملية دفع (للعرض فقط)
-  let lastPaymentId = null;
-
-  async function initAuth() {
-    try {
-      const auth = await Pi.authenticate(['username', 'payments'], onIncomplete);
-      user = auth.user;
-
-      document.getElementById('login-box').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      document.getElementById('u-name').innerText = `@${user.username}`;
-
-      updateUI();
-    } catch (e) {
-      alert("يجب الفتح من Pi Browser");
-    }
-  }
-
-  // ✅ جلب البيانات وحساب الرصيد
-  async function updateUI() {
-    if (!user) return;
-
-    const { data: dData } = await _db.from('donations').select('*').eq('pi_user_id', user.uid);
-    const { data: wData } = await _db.from('withdrawals').select('*').eq('pi_user_id', user.uid);
-
-    // ✅ المهم: نحسب الرصيد من الدفعات المكتملة فقط
-    const totalIn = (dData || [])
-      .filter(x => (x.status || 'completed') === 'completed')
-      .reduce((a, b) => a + parseFloat(b.amount), 0) || 0;
-
-    const totalOut = (wData || []).reduce((a, b) => a + parseFloat(b.amount), 0) || 0;
-    const balance = totalIn - totalOut;
-
-    document.getElementById('user-balance').innerText = balance.toFixed(2);
-
-    // سجل آخر 5
-    const combined = [
-      ...(dData || []).map(x => ({...x, type: 'in'})),
-      ...(wData || []).map(x => ({...x, type: 'out'}))
-    ].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0,5);
-
-    document.getElementById('history-box').innerHTML = combined.map(h => `
-      <div class="hist-item">
-        <span>
-          ${h.type === 'in' ? 'إيداع' : 'سحب'}
-          ${h.type === 'in' && h.status ? `<span class="small">(${h.status})</span>` : ``}
-        </span>
-        <span class="${h.type === 'in' ? 'plus' : 'minus'}">
-          ${h.type === 'in' ? '+' : '-'}${parseFloat(h.amount).toFixed(2)}
-        </span>
+      <div class="topbar">
+        <div class="topbarInner">
+          <div class="brand">
+            <div class="logo"><span>π</span></div>
+            <div>
+              <div style="font-size:14px; font-weight:900;">Pi Vault</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:2px;">Wallet Vault + History</div>
+            </div>
+          </div>
+          <div class="userPill" id="userPill" style="display:none;">
+            <span class="dot"></span>
+            <span id="u-name">@user</span>
+          </div>
+        </div>
       </div>
-    `).join('');
 
-    // عرض آخر paymentId
-    document.getElementById('pay-hint').innerText =
-      lastPaymentId ? `آخر Payment ID: ${lastPaymentId}` : '';
-  }
+      <!-- LOGIN -->
+      <div id="login-box" class="login">
+        <h1>ادخل من Pi Browser</h1>
+        <p>
+          سجّل دخولك بحساب Pi عشان تقدر تعمل <b>إيداع</b> و <b>سحب</b> وتتابع سجل حركاتك.
+        </p>
+        <button class="btnPrimary bigBtn" onclick="initAuth()">تسجيل الدخول</button>
+        <p style="font-size:12px; opacity:.9;">
+          لو الزر مش شغال: افتح الصفحة من تطبيق <b>Pi Browser</b>.
+        </p>
+      </div>
 
-  // ✅ helper: إدراج صف pending في donations
-  async function insertPendingDonation({ paymentId, amount, memo, metadata }) {
-    // لو اتكرر نفس paymentId لأي سبب، نخليه upsert بدل ما يرمي error
-    const payload = {
-      pi_user_id: user.uid,
-      username: user.username,
-      amount: amount,
-      payment_id: paymentId,
-      status: 'pending',
-      memo: memo || null,
-      metadata: metadata || null
-    };
+      <!-- APP -->
+      <div id="app" style="display:none;">
+        <div class="hero">
+          <div class="heroTop">
+            <div class="heroTitle">
+              <small>إجمالي رصيدك المحفوظ</small>
+              <strong>رصيد الـ Vault</strong>
+            </div>
+            <div class="chip" id="netChip">Pi Network</div>
+          </div>
 
-    const { error } = await _db
-      .from('donations')
-      .upsert([payload], { onConflict: 'payment_id' });
+          <div class="balance">
+            <div class="pi">π</div>
+            <div class="balNum" id="user-balance">0.00</div>
+          </div>
 
-    if (error) throw error;
-  }
+          <div class="subRow">
+            <div>آخر Payment ID</div>
+            <div class="mono" id="last-payment">—</div>
+          </div>
+        </div>
 
-  // ✅ helper: تحديث صف الدفع عند الاكتمال
-  async function markDonationCompleted({ paymentId, txid }) {
-    const { error } = await _db
-      .from('donations')
-      .update({ status: 'completed', txid: txid })
-      .eq('payment_id', paymentId);
+        <div class="grid">
+          <!-- Deposit -->
+          <div class="card">
+            <div class="cardHd">
+              <h3>📥 إيداع</h3>
+              <div class="badge">سريع بدون تعليق</div>
+            </div>
+            <div class="cardBd">
+              <div class="field">
+                <div class="label">
+                  <span>المبلغ</span>
+                  <span class="hint">بالـ π</span>
+                </div>
+                <input id="d-amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+              </div>
 
-    if (error) throw error;
-  }
+              <div class="btns">
+                <button class="btnPrimary" id="btn-d" onclick="handleDeposit()">تعبئة الرصيد</button>
+                <button class="btnGhost" onclick="quickFill(1)">+1</button>
+              </div>
 
-  // ✅ helper: تحديث صف الدفع عند الإلغاء/الخطأ
-  async function markDonationFailed({ paymentId, reason }) {
-    const { error } = await _db
-      .from('donations')
-      .update({ status: 'failed', metadata: { reason: reason || 'unknown' } })
-      .eq('payment_id', paymentId);
+              <div class="msg">
+                <b>ملاحظة:</b> approve/complete بيتنفذوا الأول عشان ما يحصلش توقف 60 ثانية، وبعدها التسجيل في قاعدة البيانات.
+              </div>
+            </div>
+          </div>
 
-    // مش هنرمي error هنا عشان ما نكسرش الـ flow
-    if (error) console.log('markDonationFailed error', error);
-  }
+          <!-- Withdraw -->
+          <div class="card">
+            <div class="cardHd">
+              <h3>📤 سحب</h3>
+              <div class="badge">Server Transfer</div>
+            </div>
+            <div class="cardBd">
+              <div class="field">
+                <div class="label">
+                  <span>عنوان المحفظة</span>
+                  <span class="hint">G...</span>
+                </div>
+                <input id="w-addr" type="text" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="G...">
+              </div>
 
-  // ✅ تنفيذ الإيداع + الربط بجدول donations
-  async function handleDeposit() {
-    const val = parseFloat(document.getElementById('d-amount').value);
-    if (!val || val <= 0) return alert("أدخل مبلغاً");
+              <div class="row">
+                <div class="field" style="margin-bottom:0;">
+                  <div class="label">
+                    <span>الكمية</span>
+                    <span class="hint">بالـ π</span>
+                  </div>
+                  <input id="w-amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+                </div>
+              </div>
 
-    const btn = document.getElementById('btn-d');
-    btn.disabled = true;
+              <div class="btns" style="margin-top:10px;">
+                <button class="btnGhost" onclick="fillMax()">الحد الأقصى</button>
+                <button class="btnPrimary" id="btn-w" onclick="handleWithdraw()">سحب الآن</button>
+              </div>
 
-    const memo = "تعبئة رصيد Vault";
-    const metadata = { action: "deposit", app: "PiVault" };
+              <div class="msg">
+                السحب بيتنفذ من السيرفر عبر <b>/api/withdraw</b> (لازم يكون عندك withdraw.js شغال + Seed على السيرفر).
+              </div>
+            </div>
+          </div>
 
-    try {
-      await Pi.createPayment({
-        amount: val,
-        memo,
-        metadata
-      }, {
-        onReadyForServerApproval: async (paymentId) => {
-          lastPaymentId = paymentId;
-          updateUI();
+          <!-- History -->
+          <div class="card">
+            <div class="cardHd">
+              <h3>🕒 سجل الحركات</h3>
+              <div class="badge" id="histBadge">آخر 6</div>
+            </div>
+            <div class="cardBd">
+              <div id="history-box" class="hist"></div>
+              <div id="noHist" class="msg" style="display:none;">لسه مفيش حركات هنا.</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-          // ✅ 1) نسجل في الداتابيز pending بمجرد ظهور paymentId
-          await insertPendingDonation({
-            paymentId,
-            amount: val,
-            memo,
-            metadata
-          });
+    </div>
+  </div>
 
-          // ✅ 2) نطلب approve من السيرفر
-          const res = await fetch('/api/pi/approve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentId })
-          });
+  <div class="toast" id="toast">
+    <div class="t1" id="toastT1">—</div>
+    <div class="t2" id="toastT2">—</div>
+  </div>
 
-          // لو عايز تشيك errors من السيرفر
-          const j = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            await markDonationFailed({ paymentId, reason: j?.error_message || 'approve_failed' });
-            throw new Error('Approve failed');
-          }
+  <script>
+    // =========================
+    // Supabase
+    // =========================
+    const S_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
+    const S_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
+    const _db = supabase.createClient(S_URL, S_KEY);
 
-          return j;
-        },
+    // =========================
+    // Pi
+    // =========================
+    const Pi = window.Pi;
+    let user = null;
+    let lastPaymentId = null;
 
-        onReadyForServerCompletion: async (paymentId, txid) => {
-          lastPaymentId = paymentId;
-          updateUI();
+    // =========================
+    // UI Helpers
+    // =========================
+    const $ = (id) => document.getElementById(id);
 
-          // ✅ 3) نحدّث صف donation لنفس paymentId: completed + txid
-          await markDonationCompleted({ paymentId, txid });
-
-          // ✅ 4) نطلب complete من السيرفر
-          const res = await fetch('/api/pi/complete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentId, txid })
-          });
-
-          const j = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            // لو complete فشل عندك، خليه failed (أو خليه pending لو تفضّل)
-            await markDonationFailed({ paymentId, reason: j?.error_message || 'complete_failed' });
-            throw new Error('Complete failed');
-          }
-
-          alert("تم الإيداع بنجاح!");
-          document.getElementById('d-amount').value = "";
-          await updateUI();
-          btn.disabled = false;
-        },
-
-        onCancel: async () => {
-          // لو كان عندنا paymentId بالفعل، نعلمه failed
-          if (lastPaymentId) await markDonationFailed({ paymentId: lastPaymentId, reason: 'user_cancelled' });
-          btn.disabled = false;
-        },
-
-        onError: async (err) => {
-          if (lastPaymentId) await markDonationFailed({ paymentId: lastPaymentId, reason: err?.toString?.() || 'pi_error' });
-          btn.disabled = false;
-        }
-      });
-
-    } catch (e) {
-      console.log(e);
-      btn.disabled = false;
+    function toast(title, msg){
+      $("toastT1").innerText = title || "";
+      $("toastT2").innerText = msg || "";
+      $("toast").classList.add("show");
+      clearTimeout(window.__toastT);
+      window.__toastT = setTimeout(()=> $("toast").classList.remove("show"), 3200);
     }
-  }
 
-  // تنفيذ السحب (زي ما هو عندك)
-  async function handleWithdraw() {
-    const addr = document.getElementById('w-addr').value;
-    const amt = parseFloat(document.getElementById('w-amount').value);
-    const currentBal = parseFloat(document.getElementById('user-balance').innerText);
-
-    if (!addr || !amt || amt <= 0) return alert("أكمل بيانات السحب");
-    if (amt > currentBal) return alert("رصيدك غير كافٍ");
-
-    const btn = document.getElementById('btn-w');
-    btn.disabled = true;
-
-    try {
-      const { error } = await _db.from('withdrawals').insert([{
-        pi_user_id: user.uid,
-        username: user.username,
-        amount: amt,
-        wallet_address: addr
-      }]);
-
-      if (error) throw error;
-
-      await fetch('/api/withdraw', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: user.uid, amount: amt, walletAddress: addr })
-      });
-
-      alert("تم تسجيل طلب السحب!");
-      document.getElementById('w-amount').value = "";
-      updateUI();
-    } catch (e) {
-      alert("حدث خطأ في السحب");
+    function setBusy(btnId, busy){
+      const b = $(btnId);
+      if (!b) return;
+      b.disabled = !!busy;
+      b.style.opacity = busy ? .65 : 1;
     }
-    btn.disabled = false;
-  }
 
-  // ✅ مهم: لو فيه عملية incomplete من Pi SDK، نحدّث نفس صف payment_id
-  const onIncomplete = async (p) => {
-    try {
-      const paymentId = p.identifier;
-      const txid = p?.transaction?.txid;
+    function quickFill(x){
+      const el = $("d-amount");
+      const cur = parseFloat(el.value || "0") || 0;
+      el.value = (cur + x).toFixed(2);
+    }
 
-      if (!paymentId) return;
+    function fillMax(){
+      const bal = parseFloat($("user-balance").innerText || "0") || 0;
+      $("w-amount").value = bal > 0 ? bal.toFixed(2) : "";
+    }
 
-      lastPaymentId = paymentId;
+    function shortId(s){
+      if(!s) return "—";
+      if(s.length <= 18) return s;
+      return s.slice(0,8) + "…" + s.slice(-8);
+    }
 
-      // لو txid موجود نعتبرها completed
-      if (txid) {
-        await markDonationCompleted({ paymentId, txid });
-        await fetch('/api/pi/complete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentId, txid })
-        });
-      } else {
-        await markDonationFailed({ paymentId, reason: 'incomplete_no_txid' });
+    function statusClass(st){
+      const s = (st || "").toLowerCase();
+      if(s === "completed" || s === "success") return "ok";
+      if(s === "pending") return "pend";
+      if(s === "failed" || s === "error") return "fail";
+      return "";
+    }
+
+    function formatTime(iso){
+      if(!iso) return "";
+      const d = new Date(iso);
+      const hh = String(d.getHours()).padStart(2,'0');
+      const mm = String(d.getMinutes()).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      const mo = String(d.getMonth()+1).padStart(2,'0');
+      return `${dd}/${mo} ${hh}:${mm}`;
+    }
+
+    // =========================
+    // Auth
+    // =========================
+    async function initAuth(){
+      try{
+        const auth = await Pi.authenticate(['username','payments'], onIncomplete);
+        user = auth.user;
+
+        $("login-box").style.display = "none";
+        $("app").style.display = "block";
+        $("userPill").style.display = "flex";
+        $("u-name").innerText = `@${user.username}`;
+
+        toast("تم تسجيل الدخول", `أهلًا ${user.username}`);
+        await updateUI();
+      }catch(e){
+        alert("يجب فتح الصفحة من Pi Browser");
       }
-
-      updateUI();
-    } catch (e) {
-      console.log('onIncomplete error', e);
     }
-  };
 
-  window.onload = () => Pi.init({ version: "2.0" });
-</script>
+    // =========================
+    // IMPORTANT: FAST PAYMENT FLOW
+    // - approve/complete FIRST (no DB waits)
+    // - DB happens after and without blocking
+    // =========================
+    async function handleDeposit(){
+      const val = parseFloat($("d-amount").value);
+      if (!val || val <= 0) return toast("خطأ", "أدخل مبلغ صحيح");
 
-</body>
-</html>
+      setBusy("btn-d", true);
+
+      const memo = "تعبئة رصيد Vault";
+      const metadata = { action:"deposit", app:"PiVault" };
+
+      try{
+        await Pi.createPayment(
+          { amount: val, memo, metadata },
+          {
+            onReadyForServerApproval: async (paymentId) => {
+              lastPaymentId = paymentId;
+              $("last-payment").innerText = shortId(paymentId);
+
+              // 1) APPROVE FIRST (FAST)
+              const res = await fetch('/api/pi/approve', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ paymentId })
+              });
+
+              co
