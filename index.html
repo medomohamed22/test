@@ -21,7 +21,6 @@
             min-height: 100vh; padding: 20px; 
         }
 
-        /* شاشة الدخول والشعار العائم */
         #login-overlay {
             position: fixed; inset: 0; background: var(--dark-bg);
             z-index: 9999; display: flex; flex-direction: column;
@@ -44,7 +43,6 @@
             50% { transform: translateY(-20px) rotate(10deg); }
         }
 
-        /* زر تبديل اللغة */
         .lang-switch {
             position: fixed; top: 20px; right: 20px;
             background: var(--glass); border: 1px solid rgba(255,255,255,0.1);
@@ -52,7 +50,6 @@
             cursor: pointer; z-index: 10000; font-size: 1.2rem;
         }
 
-        /* البطاقة */
         .vault-card {
             background: linear-gradient(135deg, var(--primary), #a29bfe);
             border-radius: 24px; padding: 30px; height: 200px;
@@ -69,7 +66,6 @@
             padding: 20px; border-radius: 20px; text-align: center; cursor: pointer;
         }
 
-        /* المودال */
         .modal {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
@@ -86,9 +82,7 @@
             text-align: center; font-size: 1.1rem;
         }
 
-        .fee-info {
-            text-align: center; color: #a29bfe; font-size: 0.85rem; margin-bottom: 15px;
-        }
+        .fee-info { text-align: center; color: #a29bfe; font-size: 0.85rem; margin-bottom: 15px; }
 
         .confirm-btn {
             width: 100%; padding: 16px; border-radius: 15px; border: none;
@@ -101,7 +95,6 @@
             border-bottom: 1px solid rgba(255,255,255,0.05);
         }
 
-        /* RTL Support */
         [dir="rtl"] .lang-switch { right: auto; left: 20px; }
     </style>
 </head>
@@ -155,7 +148,6 @@
     </div>
 
     <script>
-        // Database Configuration
         const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
         const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -185,7 +177,7 @@
             }
         };
 
-        // تحديث نص الرسوم تلقائياً عند الكتابة
+        // تحديث نص الرسوم عند الكتابة
         document.getElementById('wit-amount').addEventListener('input', (e) => {
             const val = parseFloat(e.target.value) || 0;
             const total = val > 0 ? (val + WITHDRAW_FEE).toFixed(2) : "0.00";
@@ -207,7 +199,6 @@
             document.getElementById('t-wit-title').innerText = t.wit_t;
             document.getElementById('btn-dep').innerText = t.conf_dep;
             document.getElementById('btn-wit').innerText = t.conf_wit;
-            // تحديث سطر الرسوم فور تغيير اللغة
             const val = parseFloat(document.getElementById('wit-amount').value) || 0;
             const total = val > 0 ? (val + WITHDRAW_FEE).toFixed(2) : "0.00";
             document.getElementById('t-fee-info').innerText = `${t.fee_lbl} ${total} π`;
@@ -227,11 +218,9 @@
             if (!user) return;
             const { data: d } = await _db.from('donations').select('*').eq('pi_user_id', user.uid);
             const { data: w } = await _db.from('withdrawals').select('*').eq('pi_user_id', user.uid);
-            
             const totalIn = d?.reduce((s, r) => s + parseFloat(r.amount), 0) || 0;
             const totalOut = w?.reduce((s, r) => s + parseFloat(r.amount), 0) || 0;
             document.getElementById('main-balance').innerText = (totalIn - totalOut).toFixed(2);
-            
             const list = document.getElementById('history-list');
             const all = [...(d || []), ...(w || [])].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
             list.innerHTML = all.slice(0, 5).map(i => `
@@ -247,7 +236,6 @@
             if (!amt || amt <= 0) return;
             const btn = document.getElementById('btn-dep');
             btn.disabled = true; btn.innerText = i18n[currentLang].wait;
-
             try {
                 await window.Pi.createPayment({ amount: amt, memo: "Deposit to Nexus Wallet", metadata: { type: "deposit" } }, {
                     onReadyForServerApproval: (id) => fetch('/api/pi/approve', { method: 'POST', body: JSON.stringify({ paymentId: id }) }),
@@ -264,6 +252,7 @@
             } catch (e) { btn.disabled = false; }
         }
 
+        // --- التعديل الجذري هنا لحل مشكلة السحب ---
         async function executeWithdraw() {
             const addr = document.getElementById('wit-address').value;
             const netAmt = parseFloat(document.getElementById('wit-amount').value);
@@ -277,37 +266,26 @@
             btn.disabled = true; btn.innerText = i18n[currentLang].wait;
 
             try {
-                const res = await fetch('/api/withdraw', {
-                    method: 'POST', 
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        uid: user.uid, 
-                        username: user.username, 
-                        netAmount: netAmt,      // المبلغ الذي سيحول للمستخدم فعلياً
-                        fee: WITHDRAW_FEE,      // الرسوم
-                        totalAmount: totalToDeduct, // المبلغ الكلي المخصوم من قاعدة البيانات
-                        walletAddress: addr 
-                    })
-                });
-                
-                if (res.ok) {
-                    // تسجيل في قاعدة البيانات المحلية للخصم الفوري في الواجهة
-                    await _db.from('withdrawals').insert([{ 
-                        pi_user_id: user.uid, 
-                        username: user.username, 
-                        amount: totalToDeduct, 
-                        wallet_address: addr 
-                    }]);
-                    
-                    alert(i18n[currentLang].success_wit);
-                    closeAllModals();
-                    refreshData();
-                } else {
-                    const err = await res.json();
-                    alert(err.details || "Request failed");
-                }
-            } catch (e) { alert("Server Error"); }
-            btn.disabled = false;
+                // الخصم مباشرة من قاعدة بيانات السوبابيز (المبلغ + الرسوم)
+                const { error } = await _db.from('withdrawals').insert([{ 
+                    pi_user_id: user.uid, 
+                    username: user.username, 
+                    amount: totalToDeduct, // سيتم تسجيل الخصم الإجمالي في قاعدة البيانات
+                    wallet_address: addr 
+                }]);
+
+                if (error) throw error;
+
+                alert(i18n[currentLang].success_wit);
+                closeAllModals();
+                refreshData();
+            } catch (e) {
+                console.error(e);
+                alert("Database Error: " + (e.message || "Failed to record transaction"));
+            } finally {
+                btn.disabled = false;
+                btn.innerText = i18n[currentLang].conf_wit;
+            }
         }
 
         function openModal(type) { document.getElementById(`${type}-modal`).style.display = 'flex'; }
