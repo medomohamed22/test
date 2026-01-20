@@ -177,7 +177,6 @@
             }
         };
 
-        // تحديث نص الرسوم عند الكتابة
         document.getElementById('wit-amount').addEventListener('input', (e) => {
             const val = parseFloat(e.target.value) || 0;
             const total = val > 0 ? (val + WITHDRAW_FEE).toFixed(2) : "0.00";
@@ -252,7 +251,6 @@
             } catch (e) { btn.disabled = false; }
         }
 
-        // --- التعديل الجذري هنا لحل مشكلة السحب ---
         async function executeWithdraw() {
             const addr = document.getElementById('wit-address').value;
             const netAmt = parseFloat(document.getElementById('wit-amount').value);
@@ -266,22 +264,40 @@
             btn.disabled = true; btn.innerText = i18n[currentLang].wait;
 
             try {
-                // الخصم مباشرة من قاعدة بيانات السوبابيز (المبلغ + الرسوم)
-                const { error } = await _db.from('withdrawals').insert([{ 
-                    pi_user_id: user.uid, 
-                    username: user.username, 
-                    amount: totalToDeduct, // سيتم تسجيل الخصم الإجمالي في قاعدة البيانات
-                    wallet_address: addr 
-                }]);
+                // 1. طلب التنفيذ من الباك اند (ليتم على البلوكتشين)
+                const response = await fetch('/api/withdraw', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        uid: user.uid,
+                        username: user.username,
+                        amount: netAmt,      // المبلغ المرسل للمستخدم
+                        fee: WITHDRAW_FEE,   // رسوم الموقع
+                        address: addr        // محفظة المستخدم
+                    })
+                });
 
-                if (error) throw error;
+                if (response.ok) {
+                    // 2. إذا نجح الباك اند، نسجل الخصم في Supabase (المبلغ + الرسوم)
+                    const { error } = await _db.from('withdrawals').insert([{ 
+                        pi_user_id: user.uid, 
+                        username: user.username, 
+                        amount: totalToDeduct, 
+                        wallet_address: addr 
+                    }]);
 
-                alert(i18n[currentLang].success_wit);
-                closeAllModals();
-                refreshData();
+                    if (error) throw error;
+
+                    alert(i18n[currentLang].success_wit);
+                    closeAllModals();
+                    refreshData();
+                } else {
+                    const result = await response.json();
+                    alert("Blockchain Error: " + (result.details || "Failed"));
+                }
             } catch (e) {
                 console.error(e);
-                alert("Database Error: " + (e.message || "Failed to record transaction"));
+                alert("System Error: " + e.message);
             } finally {
                 btn.disabled = false;
                 btn.innerText = i18n[currentLang].conf_wit;
