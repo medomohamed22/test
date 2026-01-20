@@ -1,676 +1,214 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Donate Way Wallet - محفظة حفظ π</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donate Way - منصة التبرع الموثوقة</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;700&display=swap" rel="stylesheet">
+    
+    <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;700&display=swap" rel="stylesheet">
-  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        /* الستايلات الأساسية */
+        :root { --primary-purple: #8e44ad; --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%); --success: #2ecc71; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Tajawal', sans-serif; }
+        body { background: #f0f2f5; min-height: 100vh; padding-top: 110px; overflow-x: hidden; }
+        body::before { content: ""; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-gradient); clip-path: circle(30% at 90% 10%); z-index: -1; }
+        
+        header { position: fixed; top: 0; left: 0; right: 0; height: 75px; display: flex; justify-content: space-between; align-items: center; padding: 0 5%; background: rgba(255,255,255,0.85); backdrop-filter: blur(25px); z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .logo { font-size: 1.8rem; font-weight: 700; color: var(--primary-purple); cursor: pointer; }
+        
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        .campaigns-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 35px; }
+        
+        .card { background: white; border-radius: 35px; padding: 25px; box-shadow: 0 20px 40px rgba(0,0,0,0.05); text-align: center; }
+        .campaign-img { width: 100%; height: 200px; object-fit: cover; border-radius: 25px; margin-bottom: 20px; }
+        .progress-bar { width: 100%; height: 12px; background: #eee; border-radius: 20px; overflow: hidden; margin: 15px 0; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #a29bfe, #8e44ad); transition: 1.5s; }
+        
+        .donate-btn { width: 100%; padding: 15px; border-radius: 20px; background: var(--primary-purple); color: white; border: none; font-weight: 700; cursor: pointer; margin-top: 10px; transition: 0.3s; }
+        .donate-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .amount-input { width: 100%; padding: 15px; border-radius: 20px; border: 2px solid #f0f0f0; margin-bottom: 15px; text-align: center; font-size: 1rem; }
 
-  <style>
-    :root{
-      --p:#8e44ad;
-      --p2:#a29bfe;
-      --bg1:#0b1020;
-      --bg2:#121a33;
-      --card: rgba(255,255,255,.08);
-      --card2: rgba(255,255,255,.12);
-      --text:#f4f5ff;
-      --muted: rgba(244,245,255,.70);
-      --line: rgba(255,255,255,.16);
-      --good:#2ecc71;
-      --bad:#ff5d5d;
-      --shadow: 0 25px 60px rgba(0,0,0,.35);
-      --radius: 26px;
-    }
+        /* المحفظة والمودال */
+        .wallet-btn { background: #2d3436; color: white; padding: 8px 20px; border-radius: 50px; cursor: pointer; margin-right: 10px; display: none; align-items: center; gap: 5px; }
+        .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 30px; border-radius: 30px; width: 90%; max-width: 500px; text-align: center; position: relative; }
+        .close-modal { position: absolute; top: 15px; left: 15px; font-size: 1.5rem; cursor: pointer; }
+        
+        .balance-display { font-size: 2.5rem; color: var(--primary-purple); font-weight: bold; margin: 20px 0; }
+        .wallet-input { width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 15px; }
+        .withdraw-btn { background: #e74c3c; color: white; width: 100%; padding: 15px; border-radius: 15px; border: none; font-weight: bold; cursor: pointer; }
 
-    *{box-sizing:border-box; margin:0; padding:0; font-family:'Tajawal', sans-serif;}
-    body{
-      min-height:100vh;
-      color:var(--text);
-      background:
-        radial-gradient(900px 600px at 85% 10%, rgba(142,68,173,.35), transparent 60%),
-        radial-gradient(900px 600px at 10% 85%, rgba(162,155,254,.25), transparent 60%),
-        linear-gradient(135deg, var(--bg1), var(--bg2));
-      overflow-x:hidden;
-    }
-
-    /* Topbar */
-    header{
-      position:sticky;
-      top:0;
-      z-index:9999;
-      backdrop-filter: blur(18px);
-      background: rgba(10,14,28,.55);
-      border-bottom: 1px solid rgba(255,255,255,.08);
-    }
-    .topbar{
-      max-width:1100px;
-      margin:0 auto;
-      padding:14px 16px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-    }
-    .brand{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      cursor:pointer;
-      user-select:none;
-    }
-    .brand .mark{
-      width:42px; height:42px; border-radius:14px;
-      background: linear-gradient(135deg, rgba(142,68,173,1), rgba(162,155,254,1));
-      box-shadow: 0 12px 30px rgba(142,68,173,.35);
-      display:grid; place-items:center;
-      font-weight:900;
-    }
-    .brand .t{
-      display:flex; flex-direction:column; line-height:1.1;
-    }
-    .brand .t b{font-size:16px;}
-    .brand .t span{font-size:12px; color:var(--muted);}
-
-    .actions{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
-    .pill{
-      display:none;
-      padding:10px 12px;
-      border-radius:999px;
-      background: rgba(255,255,255,.08);
-      border:1px solid rgba(255,255,255,.12);
-      color:var(--text);
-      font-weight:700;
-      max-width: 55vw;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
-    .btn{
-      border:none;
-      cursor:pointer;
-      padding:10px 14px;
-      border-radius:999px;
-      font-weight:800;
-      transition:.2s;
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      color:var(--text);
-      background: rgba(255,255,255,.10);
-      border:1px solid rgba(255,255,255,.14);
-    }
-    .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.14);}
-    .btn.primary{
-      background: linear-gradient(135deg, rgba(142,68,173,1), rgba(162,155,254,1));
-      border:none;
-      box-shadow: 0 18px 35px rgba(142,68,173,.30);
-    }
-    .btn.primary:hover{filter:brightness(1.02);}
-    .btn.danger{
-      background: rgba(255,93,93,.16);
-      border:1px solid rgba(255,93,93,.25);
-    }
-    .btn:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-      transform:none;
-    }
-
-    /* Layout */
-    .wrap{
-      max-width:1100px;
-      margin:0 auto;
-      padding:22px 16px 40px;
-    }
-
-    .hero{
-      margin-top:10px;
-      display:grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap:18px;
-      align-items:stretch;
-    }
-    @media (max-width: 920px){
-      .hero{grid-template-columns:1fr; }
-    }
-
-    .card{
-      background: var(--card);
-      border:1px solid rgba(255,255,255,.12);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow:hidden;
-      position:relative;
-    }
-    .card::before{
-      content:"";
-      position:absolute;
-      inset:-2px;
-      background: radial-gradient(600px 200px at 80% 0%, rgba(162,155,254,.22), transparent 60%),
-                  radial-gradient(600px 200px at 10% 100%, rgba(142,68,173,.18), transparent 60%);
-      pointer-events:none;
-    }
-    .card > *{position:relative;}
-
-    .card-h{
-      padding:18px 18px 12px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      border-bottom:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.03);
-    }
-    .card-h .title{
-      display:flex;
-      flex-direction:column;
-      gap:4px;
-    }
-    .card-h .title b{font-size:16px;}
-    .card-h .title span{font-size:12px; color:var(--muted);}
-    .badge{
-      padding:8px 10px;
-      border-radius:999px;
-      background: rgba(255,255,255,.08);
-      border:1px solid rgba(255,255,255,.12);
-      color:var(--muted);
-      font-size:12px;
-      font-weight:800;
-    }
-
-    .card-b{
-      padding:18px;
-    }
-
-    /* Wallet big balance */
-    .balance{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
-    .balance .num{
-      font-size:44px;
-      font-weight:900;
-      letter-spacing:.5px;
-      line-height:1.1;
-      background: linear-gradient(135deg, #ffffff, rgba(162,155,254,.95));
-      -webkit-background-clip:text;
-      background-clip:text;
-      color:transparent;
-    }
-    .balance .sub{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      color:var(--muted);
-      font-size:13px;
-    }
-    .kv{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      padding:10px 12px;
-      border-radius:16px;
-      background: rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.10);
-    }
-
-    /* Forms */
-    .grid2{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:14px;
-    }
-    @media(max-width: 700px){
-      .grid2{grid-template-columns:1fr;}
-    }
-    .field{
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-    }
-    label{
-      font-size:12px;
-      color:var(--muted);
-      font-weight:700;
-    }
-    input{
-      width:100%;
-      padding:14px 14px;
-      border-radius:18px;
-      border:1px solid rgba(255,255,255,.14);
-      outline:none;
-      background: rgba(5,8,18,.35);
-      color:var(--text);
-      font-size:15px;
-    }
-    input::placeholder{color: rgba(244,245,255,.45);}
-    .hint{
-      font-size:12px;
-      color: rgba(244,245,255,.55);
-      line-height:1.4;
-      margin-top:10px;
-    }
-
-    /* Alerts */
-    #toast{
-      position:fixed;
-      bottom:22px;
-      left:50%;
-      transform:translateX(-50%);
-      background: rgba(0,0,0,.65);
-      border:1px solid rgba(255,255,255,.15);
-      color:#fff;
-      padding:12px 16px;
-      border-radius:999px;
-      display:none;
-      z-index:10001;
-      max-width: 92vw;
-      text-align:center;
-      backdrop-filter: blur(12px);
-    }
-
-    /* Small list */
-    .mini{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
-    .mini-row{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      padding:12px 12px;
-      border-radius:18px;
-      background: rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.10);
-      color:var(--muted);
-      font-size:13px;
-    }
-    .mini-row b{color:var(--text); font-size:13px;}
-    .ok{color:rgba(46,204,113,.95);}
-    .err{color:rgba(255,93,93,.95);}
-
-    /* Footer note */
-    .footer-note{
-      margin-top:18px;
-      color:rgba(244,245,255,.55);
-      font-size:12px;
-      line-height:1.5;
-      text-align:center;
-    }
-  </style>
+        #custom-alert { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 15px 35px; border-radius: 50px; display: none; z-index: 10001; }
+    </style>
 </head>
-
 <body>
-  <div id="toast"></div>
 
-  <header>
-    <div class="topbar">
-      <div class="brand" onclick="location.reload()">
-        <div class="mark">π</div>
-        <div class="t">
-          <b>Donate Way Wallet</b>
-          <span>محفظة حفظ π — إيداع وسحب</span>
+    <div id="custom-alert"></div>
+
+    <div id="wallet-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="toggleWallet(false)">&times;</span>
+            <h2>👛 محفظتي</h2>
+            <div class="balance-display" id="user-balance">0.00 π</div>
+            <input type="text" id="withdraw-address" class="wallet-input" placeholder="عنوان محفظتك (G...)">
+            <input type="number" id="withdraw-amount" class="wallet-input" placeholder="المبلغ">
+            <button id="btn-withdraw" class="withdraw-btn" onclick="executeWithdraw()">تأكيد سحب التست باي</button>
+            <p id="withdraw-status" style="margin-top:10px; font-size:0.8rem;"></p>
         </div>
-      </div>
-
-      <div class="actions">
-        <div id="user-pill" class="pill"></div>
-        <button id="login-button" class="btn primary" onclick="login()">🔐 دخول Pi</button>
-        <button id="logout-button" class="btn danger" style="display:none" onclick="logout()">⎋ خروج</button>
-      </div>
-    </div>
-  </header>
-
-  <div class="wrap">
-    <div class="hero">
-      <!-- Wallet Card -->
-      <div class="card">
-        <div class="card-h">
-          <div class="title">
-            <b>👛 رصيد محفظتك</b>
-            <span>يتم حسابه من قاعدة البيانات: (إيداعات - سحوبات)</span>
-          </div>
-          <div class="badge" id="wallet-status">غير مسجل</div>
-        </div>
-        <div class="card-b">
-          <div class="balance">
-            <div class="num" id="user-balance">0.00 π</div>
-            <div class="sub">
-              <div class="kv">🆔 <span id="uid-view">—</span></div>
-              <div class="kv">👤 <span id="username-view">—</span></div>
-            </div>
-          </div>
-
-          <div class="hint">
-            ✅ لازم تفتح الموقع داخل <b>Pi Browser</b> علشان الدفع يشتغل.  
-            لو حابب تخلي المستخدم يقدر “يودع كضيف” دي محتاجة منطق مختلف لأن Pi SDK أساسه مستخدم Pi.
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick Info Card -->
-      <div class="card">
-        <div class="card-h">
-          <div class="title">
-            <b>⚡ حالة العمليات</b>
-            <span>متابعة سريعة</span>
-          </div>
-          <div class="badge">Live</div>
-        </div>
-        <div class="card-b">
-          <div class="mini">
-            <div class="mini-row">
-              <span>حالة تسجيل الدخول</span>
-              <b id="mini-auth" class="err">غير مسجل</b>
-            </div>
-            <div class="mini-row">
-              <span>آخر رسالة</span>
-              <b id="mini-msg">—</b>
-            </div>
-            <div class="mini-row">
-              <span>الرصيد الحالي</span>
-              <b id="mini-bal">0.00 π</b>
-            </div>
-          </div>
-
-          <div class="footer-note">
-            كل عمليات الإيداع تعتمد على approve/complete في الباك اند بتاعك.
-          </div>
-        </div>
-      </div>
     </div>
 
-    <div style="height:18px"></div>
-
-    <div class="grid2">
-      <!-- Deposit Card -->
-      <div class="card">
-        <div class="card-h">
-          <div class="title">
-            <b>💳 بطاقة الإيداع (دفع)</b>
-            <span>إضافة π لمحفظتك</span>
-          </div>
-          <div class="badge">Deposit</div>
+    <header>
+        <div class="logo" onclick="location.reload()">Donate Way</div>
+        <div class="auth-section" style="display:flex; align-items:center;">
+            <div id="wallet-trigger" class="wallet-btn" onclick="toggleWallet(true)">
+                <span>💰</span> <span id="header-balance">0.00</span>
+            </div>
+            <button id="login-button" style="background:var(--primary-purple); color:white; border:none; padding:10px 25px; border-radius:50px; cursor:pointer;" onclick="login()">دخول Pi</button>
+            <div id="user-pill" style="display:none; font-weight:bold; color:var(--primary-purple); margin-right:10px;"></div>
         </div>
-        <div class="card-b">
-          <div class="field">
-            <label>المبلغ (π)</label>
-            <input id="deposit-amount" type="number" min="0" step="0.01" placeholder="مثال: 1.50" />
-          </div>
+    </header>
 
-          <div style="height:12px"></div>
-
-          <button id="btn-deposit" class="btn primary" style="width:100%; justify-content:center;" onclick="handleDeposit()">
-            ➕ إيداع الآن
-          </button>
-
-          <div class="hint">
-            يتم تسجيل الإيداع في جدول <b>donations</b> تلقائيًا بعد نجاح الدفع (نفس منطقك السابق).
-          </div>
-        </div>
-      </div>
-
-      <!-- Withdraw Card -->
-      <div class="card">
-        <div class="card-h">
-          <div class="title">
-            <b>🏧 بطاقة السحب</b>
-            <span>سحب “test pay” عبر الباك اند</span>
-          </div>
-          <div class="badge">Withdraw</div>
-        </div>
-        <div class="card-b">
-          <div class="field">
-            <label>عنوان محفظتك (G...)</label>
-            <input id="withdraw-address" type="text" placeholder="G..." />
-          </div>
-
-          <div style="height:12px"></div>
-
-          <div class="field">
-            <label>المبلغ (π)</label>
-            <input id="withdraw-amount" type="number" min="0" step="0.01" placeholder="مثال: 0.50" />
-          </div>
-
-          <div style="height:12px"></div>
-
-          <button id="btn-withdraw" class="btn danger" style="width:100%; justify-content:center;" onclick="executeWithdraw()">
-            ⬇️ تأكيد سحب التست باي
-          </button>
-
-          <div class="hint" id="withdraw-status">—</div>
-        </div>
-      </div>
+    <div class="container">
+        <h1 style="text-align:center; margin-bottom:40px; color:#333;">عطاؤك يصنع الفرق</h1>
+        <div class="campaigns-grid" id="campaigns-container"></div>
     </div>
 
-    <div class="footer-note">
-      © Donate Way Wallet — واجهة فقط. نفس Supabase + نفس باك اند الدفع والسحب عندك.
-    </div>
-  </div>
+    <script>
+        const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const Pi = window.Pi;
+        let currentUser = null;
+        let userBalance = 0;
+        let campaigns = [];
 
-  <script>
-    // ====== SUPABASE CONFIG (كما هو) ======
-    const SUPABASE_URL = 'https://xncapmzlwuisupkjlftb.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_zPECXAiI_bDbeLtRYe3vIw_IEt_p_AS';
-    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        // 1. التعامل مع المدفوعات غير المكتملة (هام جداً لمتصفح Pi)
+        const onIncompletePaymentFound = async (payment) => {
+            console.log("Incomplete payment found", payment);
+            return fetch('/api/pi/complete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paymentId: payment.identifier, txid: payment.transaction.txid })
+            });
+        };
 
-    const Pi = window.Pi;
-    let currentUser = null;
-    let userBalance = 0;
+        // 2. تسجيل الدخول
+        async function login() {
+            try {
+                const auth = await Pi.authenticate(['username', 'payments'], onIncompletePaymentFound);
+                currentUser = auth.user;
+                document.getElementById('login-button').style.display = 'none';
+                document.getElementById('user-pill').style.display = 'block';
+                document.getElementById('user-pill').innerText = `@${currentUser.username}`;
+                document.getElementById('wallet-trigger').style.display = 'flex';
+                fetchUserBalance();
+            } catch (e) { alert("افتح الموقع داخل متصفح Pi"); }
+        }
 
-    // Toast
-    function toast(msg){
-      const t = document.getElementById('toast');
-      t.innerText = msg;
-      t.style.display = 'block';
-      clearTimeout(window.__toastT);
-      window.__toastT = setTimeout(()=> t.style.display='none', 2800);
-      document.getElementById('mini-msg').innerText = msg;
-    }
+        // 3. جلب الرصيد من Supabase
+        async function fetchUserBalance() {
+            if (!currentUser) return;
+            const { data: dons } = await _supabase.from('donations').select('amount').eq('pi_user_id', currentUser.uid);
+            const { data: wits } = await _supabase.from('withdrawals').select('amount').eq('pi_user_id', currentUser.uid);
+            
+            const totalD = dons?.reduce((s, d) => s + parseFloat(d.amount), 0) || 0;
+            const totalW = wits?.reduce((s, w) => s + parseFloat(w.amount), 0) || 0;
+            userBalance = totalD - totalW;
 
-    // 1) التعامل مع المدفوعات غير المكتملة (هام جداً لمتصفح Pi)
-    const onIncompletePaymentFound = async (payment) => {
-      console.log("Incomplete payment found", payment);
-      // ملاحظة: بعض الحالات payment.transaction قد تكون null حسب مرحلة العملية
-      const txid = payment?.transaction?.txid;
-      if(!txid){
-        // لو مفيش txid، سيبها للـ SDK يكملها
-        return;
-      }
-      return fetch('/api/pi/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentId: payment.identifier, txid })
-      });
-    };
+            document.getElementById('header-balance').innerText = userBalance.toFixed(2);
+            document.getElementById('user-balance').innerText = userBalance.toFixed(2) + " π";
+        }
 
-    // 2) تسجيل الدخول
-    async function login() {
-      try {
-        const auth = await Pi.authenticate(['username', 'payments'], onIncompletePaymentFound);
-        currentUser = auth.user;
+        // 4. تنفيذ عملية التبرع (ربط مع approve و complete)
+        function handleDonate(campId) {
+            if (!currentUser) return alert("سجل دخولك أولاً");
+            const amount = parseFloat(document.getElementById(`in-${campId}`).value);
+            if (!amount || amount <= 0) return alert("أدخل مبلغ صحيح");
 
-        document.getElementById('login-button').style.display = 'none';
-        document.getElementById('logout-button').style.display = 'inline-flex';
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerText = "جاري المعالجة...";
 
-        document.getElementById('user-pill').style.display = 'inline-flex';
-        document.getElementById('user-pill').innerText = `@${currentUser.username}`;
+            Pi.createPayment({
+                amount: amount,
+                memo: `تبرع لحملة رقم ${campId}`,
+                metadata: { campId: campId }
+            }, {
+                onReadyForServerApproval: (paymentId) => {
+                    return fetch('/api/pi/approve', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paymentId })
+                    });
+                },
+                onReadyForServerCompletion: (paymentId, txid) => {
+                    return fetch('/api/pi/complete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paymentId, txid })
+                    }).then(async () => {
+                        // تحديث قاعدة البيانات محلياً بعد نجاح الدفع
+                        await _supabase.from('donations').insert([
+                            { pi_user_id: currentUser.uid, username: currentUser.username, amount: amount, campaign_id: campId }
+                        ]);
+                        alert("شكراً لك! تم استلام تبرعك بنجاح.");
+                        location.reload();
+                    });
+                },
+                onCancel: () => { btn.disabled = false; btn.innerText = "تبرع"; },
+                onError: (error) => { alert("خطأ في الدفع"); btn.disabled = false; }
+            });
+        }
 
-        document.getElementById('wallet-status').innerText = 'متصل';
-        document.getElementById('mini-auth').innerText = 'متصل';
-        document.getElementById('mini-auth').className = 'ok';
+        // 5. تنفيذ عملية السحب (App-to-User)
+        async function executeWithdraw() {
+            const address = document.getElementById('withdraw-address').value;
+            const amount = parseFloat(document.getElementById('withdraw-amount').value);
+            if (amount > userBalance) return alert("رصيدك غير كافٍ");
 
-        document.getElementById('uid-view').innerText = currentUser.uid;
-        document.getElementById('username-view').innerText = '@' + currentUser.username;
+            const btn = document.getElementById('btn-withdraw');
+            btn.disabled = true;
+            document.getElementById('withdraw-status').innerText = "جاري التحويل عبر البلوكشين...";
 
-        toast('تم تسجيل الدخول ✅');
-        await fetchUserBalance();
-      } catch (e) {
-        console.log(e);
-        alert("افتح الموقع داخل متصفح Pi");
-      }
-    }
-
-    function logout(){
-      // Pi SDK لا يوفر logout رسمي واضح دايمًا — فهنا بنعمل reset UI فقط
-      currentUser = null;
-      userBalance = 0;
-
-      document.getElementById('login-button').style.display = 'inline-flex';
-      document.getElementById('logout-button').style.display = 'none';
-      document.getElementById('user-pill').style.display = 'none';
-
-      document.getElementById('wallet-status').innerText = 'غير مسجل';
-      document.getElementById('mini-auth').innerText = 'غير مسجل';
-      document.getElementById('mini-auth').className = 'err';
-
-      document.getElementById('uid-view').innerText = '—';
-      document.getElementById('username-view').innerText = '—';
-
-      updateBalanceUI();
-      toast('تم الخروج');
-    }
-
-    // 3) جلب الرصيد من Supabase
-    async function fetchUserBalance() {
-      if (!currentUser) return;
-
-      const { data: dons, error: e1 } = await _supabase
-        .from('donations')
-        .select('amount')
-        .eq('pi_user_id', currentUser.uid);
-
-      const { data: wits, error: e2 } = await _supabase
-        .from('withdrawals')
-        .select('amount')
-        .eq('pi_user_id', currentUser.uid);
-
-      if(e1) console.log('donations error', e1);
-      if(e2) console.log('withdrawals error', e2);
-
-      const totalD = dons?.reduce((s, d) => s + parseFloat(d.amount), 0) || 0;
-      const totalW = wits?.reduce((s, w) => s + parseFloat(w.amount), 0) || 0;
-
-      userBalance = totalD - totalW;
-      updateBalanceUI();
-    }
-
-    function updateBalanceUI(){
-      document.getElementById('user-balance').innerText = userBalance.toFixed(2) + " π";
-      document.getElementById('mini-bal').innerText = userBalance.toFixed(2) + " π";
-    }
-
-    // 4) إيداع (نفس منطق الدفع السابق لكن بدون حملات)
-    function handleDeposit() {
-      if (!currentUser) return alert("سجل دخولك أولاً");
-
-      const amount = parseFloat(document.getElementById('deposit-amount').value);
-      if (!amount || amount <= 0) return alert("أدخل مبلغ صحيح");
-
-      const btn = document.getElementById('btn-deposit');
-      btn.disabled = true;
-      btn.innerText = "جاري المعالجة...";
-
-      Pi.createPayment({
-        amount: amount,
-        memo: `إيداع في محفظة Donate Way`,
-        metadata: { type: "deposit" }
-      }, {
-        onReadyForServerApproval: (paymentId) => {
-          return fetch('/api/pi/approve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentId })
-          });
-        },
-        onReadyForServerCompletion: (paymentId, txid) => {
-          return fetch('/api/pi/complete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentId, txid })
-          }).then(async () => {
-            // تسجيل الإيداع في donations (كما كنت بتعمل)
-            await _supabase.from('donations').insert([{
-              pi_user_id: currentUser.uid,
-              username: currentUser.username,
-              amount: amount,
-              campaign_id: null // علشان ما نعتمدش على حملات
-            }]);
-
-            toast("تم الإيداع بنجاح ✅");
+            try {
+                const res = await fetch('/api/withdraw', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uid: currentUser.uid, username: currentUser.username, amount, walletAddress: address })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert("تم استرداد المبلغ بنجاح!");
+                    toggleWallet(false);
+                    fetchUserBalance();
+                } else { alert("خطأ: " + data.error); }
+            } catch (e) { alert("فشل الاتصال بالسيرفر"); }
             btn.disabled = false;
-            btn.innerText = "➕ إيداع الآن";
-            document.getElementById('deposit-amount').value = '';
-
-            await fetchUserBalance();
-          });
-        },
-        onCancel: () => {
-          toast("تم إلغاء العملية");
-          btn.disabled = false;
-          btn.innerText = "➕ إيداع الآن";
-        },
-        onError: (error) => {
-          console.log(error);
-          alert("خطأ في الدفع");
-          btn.disabled = false;
-          btn.innerText = "➕ إيداع الآن";
         }
-      });
-    }
 
-    // 5) سحب (App-to-User) — نفس endpoint بتاعك
-    async function executeWithdraw() {
-      if(!currentUser) return alert("سجل دخولك أولاً");
+        function toggleWallet(show) { document.getElementById('wallet-modal').style.display = show ? 'flex' : 'none'; }
 
-      const address = document.getElementById('withdraw-address').value.trim();
-      const amount = parseFloat(document.getElementById('withdraw-amount').value);
-
-      if(!address || !address.startsWith('G')) return alert("اكتب عنوان محفظة صحيح يبدأ بـ G");
-      if(!amount || amount <= 0) return alert("أدخل مبلغ صحيح");
-      if (amount > userBalance) return alert("رصيدك غير كافٍ");
-
-      const btn = document.getElementById('btn-withdraw');
-      btn.disabled = true;
-      document.getElementById('withdraw-status').innerText = "جاري التحويل عبر البلوكشين...";
-
-      try {
-        const res = await fetch('/api/withdraw', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            uid: currentUser.uid,
-            username: currentUser.username,
-            amount,
-            walletAddress: address
-          })
-        });
-
-        const data = await res.json();
-
-        if (res.ok) {
-          toast("تم السحب بنجاح ✅");
-          document.getElementById('withdraw-status').innerText = "تم التنفيذ بنجاح.";
-          document.getElementById('withdraw-amount').value = '';
-          // العنوان ممكن تسيبه زي ما هو
-          await fetchUserBalance();
-        } else {
-          const msg = data?.error || data?.message || "فشل السحب";
-          document.getElementById('withdraw-status').innerText = "خطأ: " + msg;
-          alert("خطأ: " + msg);
+        async function loadData() {
+            const { data } = await _supabase.from('campaigns').select('*').order('id');
+            if (data) {
+                const container = document.getElementById('campaigns-container');
+                container.innerHTML = data.map(c => `
+                    <div class="card">
+                        <img src="${c.image_url}" class="campaign-img">
+                        <h3>${c.title}</h3>
+                        <div class="progress-bar"><div class="progress-fill" style="width:${(c.current_amount/c.target_amount)*100}%"></div></div>
+                        <input type="number" id="in-${c.id}" class="amount-input" placeholder="0.00">
+                        <button class="donate-btn" onclick="handleDonate(${c.id})">تبرع الآن</button>
+                    </div>
+                `).join('');
+            }
         }
-      } catch (e) {
-        c
+
+        window.onload = () => { Pi.init({version:"2.0"}); loadData(); };
+    </script>
+</body>
+</html>
+
