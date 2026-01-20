@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pi Vault - المحفظة الاحترافية</title>
+    <title>Pi Vault - الرصيد المباشر</title>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;500;700&display=swap" rel="stylesheet">
     
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
@@ -52,21 +52,15 @@
 
         h3 { font-size: 1rem; color: #4b5563; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
 
-        .input-box { width: 100%; padding: 14px 18px; border-radius: 16px; border: 2px solid #e5e7eb; background: #f9fafb; font-size: 1rem; margin-bottom: 12px; outline: none; transition: 0.2s; }
-        .input-box:focus { border-color: var(--pi-primary); background: white; }
+        .input-box { width: 100%; padding: 14px 18px; border-radius: 16px; border: 2px solid #e5e7eb; background: #f9fafb; font-size: 1rem; margin-bottom: 12px; outline: none; }
 
         .btn { width: 100%; padding: 16px; border-radius: 16px; border: none; font-size: 1rem; font-weight: 700; cursor: pointer; transition: 0.2s; }
         .btn-primary { background: var(--pi-primary); color: white; }
-        .btn-outline { background: white; border: 2px solid #e5e7eb; color: #4b5563; margin-top: 5px; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
+        .btn-outline { background: white; border: 2px solid #e5e7eb; color: #4b5563; }
+        
         .history-item { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid #f3f4f6; }
-        .history-meta h4 { font-size: 0.95rem; color: #111827; }
-        .history-meta span { font-size: 0.75rem; color: #9ca3af; }
         .plus { color: var(--success); font-weight: bold; }
         .minus { color: var(--danger); font-weight: bold; }
-
-        #login-page { text-align: center; padding-top: 100px; }
     </style>
 </head>
 <body>
@@ -81,36 +75,38 @@
             <div class="wallet-icon-wrapper">
                 <svg width="35" height="35" fill="white" viewBox="0 0 24 24"><path d="M19,7H5V5H19V7M19,15H15V13H19V15M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3M19,19H5V9H19V19Z" /></svg>
             </div>
-            <div style="font-size: 0.9rem; opacity: 0.8;">رصيدك المخزن حالياً</div>
-            <div class="balance-value"><span class="pi-symbol">π</span><span id="total-balance">0.00</span></div>
+            <div style="font-size: 0.9rem; opacity: 0.8;">رصيدك الحالي من الجدول</div>
+            <div class="balance-value">
+                <span class="pi-symbol">π</span>
+                <span id="total-balance">0.00</span>
+            </div>
         </div>
 
         <div class="container">
             <div class="card">
-                <h3>📥 تعبئة الرصيد</h3>
+                <h3>📥 إيداع عملات</h3>
                 <input type="number" id="deposit-amount" class="input-box" placeholder="الكمية π">
-                <button id="btn-deposit" class="btn btn-primary" onclick="handleDeposit()">تعبئة المحفظة</button>
+                <button id="btn-deposit" class="btn btn-primary" onclick="handleDeposit()">تعبئة الآن</button>
             </div>
 
             <div class="card">
                 <h3>📤 سحب الرصيد</h3>
                 <input type="text" id="withdraw-address" class="input-box" placeholder="عنوان المحفظة G...">
                 <input type="number" id="withdraw-amount" class="input-box" placeholder="الكمية π">
-                <button id="btn-withdraw" class="btn btn-outline" onclick="handleWithdraw()">إرسال إلى محفظتي</button>
+                <button id="btn-withdraw" class="btn btn-outline" onclick="handleWithdraw()">طلب سحب</button>
             </div>
 
-            <div class="card" style="margin-bottom: 40px;">
-                <h3 style="border-bottom: 1px solid #f3f4f6; padding-bottom: 10px;">🕒 العمليات الأخيرة</h3>
+            <div class="card">
+                <h3>🕒 العمليات الأخيرة</h3>
                 <div id="history-list"></div>
             </div>
         </div>
     </div>
 
-    <div id="login-page" class="container">
+    <div id="login-page" class="container" style="text-align: center; margin-top: 100px;">
         <div class="card">
-            <img src="https://minepi.com/wp-content/uploads/2023/03/pi-logo-bezel-512.png" width="60" style="margin-bottom: 15px;">
-            <h2>مرحباً بك في Pi Vault</h2>
-            <button class="btn btn-primary" onclick="login()">الدخول عبر Pi Browser</button>
+            <h2>مرحباً بك</h2>
+            <button class="btn btn-primary" onclick="login()">دخول عبر Pi Browser</button>
         </div>
     </div>
 
@@ -129,46 +125,64 @@
                 document.getElementById('main-content').style.display = 'block';
                 document.getElementById('user-header').innerText = `@${currentUser.username}`;
                 refreshData();
-            } catch (e) { alert("افتح الموقع داخل Pi Browser"); }
+            } catch (e) { alert("افتح من متصفح Pi"); }
         }
 
+        // --- الدالة الأساسية لتحديث الرصيد من الجدول ---
         async function refreshData() {
             if (!currentUser) return;
-            // جلب البيانات من الجداول
-            const { data: d } = await _supabase.from('donations').select('*').eq('pi_user_id', currentUser.uid);
-            const { data: w } = await _supabase.from('withdrawals').select('*').eq('pi_user_id', currentUser.uid);
 
-            const totalIn = d?.reduce((s, r) => s + parseFloat(r.amount), 0) || 0;
-            const totalOut = w?.reduce((s, r) => s + parseFloat(r.amount), 0) || 0;
-            document.getElementById('total-balance').innerText = (totalIn - totalOut).toFixed(2);
+            // 1. جلب كل سجلات الإيداع لهذا المستخدم
+            const { data: donations, error: dError } = await _supabase
+                .from('donations')
+                .select('amount, created_at')
+                .eq('pi_user_id', currentUser.uid);
 
-            const all = [...(d || []).map(i => ({...i, type:'in'})), ...(w || []).map(i => ({...i, type:'out'}))]
-                        .sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+            // 2. جلب كل سجلات السحب لهذا المستخدم
+            const { data: withdrawals, error: wError } = await _supabase
+                .from('withdrawals')
+                .select('amount, created_at')
+                .eq('pi_user_id', currentUser.uid);
 
-            document.getElementById('history-list').innerHTML = all.length ? all.map(a => `
+            if (dError || wError) {
+                console.error("خطأ في جلب البيانات");
+                return;
+            }
+
+            // 3. حساب الإجمالي (إيداع - سحب)
+            const totalDeposited = donations?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+            const totalWithdrawn = withdrawals?.reduce((sum, item) => sum + parseFloat(item.amount), 0) || 0;
+            const finalBalance = totalDeposited - totalWithdrawn;
+
+            // 4. تحديث القيمة في الواجهة
+            document.getElementById('total-balance').innerText = finalBalance.toFixed(2);
+
+            // 5. تحديث السجل البصري
+            const allActions = [
+                ...(donations || []).map(i => ({...i, type: 'in'})),
+                ...(withdrawals || []).map(i => ({...i, type: 'out'}))
+            ].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
+
+            document.getElementById('history-list').innerHTML = allActions.map(a => `
                 <div class="history-item">
-                    <div class="history-meta">
-                        <h4>${a.type === 'in' ? 'إيداع' : 'سحب'}</h4>
-                        <span>${new Date(a.created_at).toLocaleDateString('ar-EG')}</span>
-                    </div>
+                    <div>${a.type === 'in' ? 'إيداع' : 'سحب'}</div>
                     <div class="${a.type === 'in' ? 'plus' : 'minus'}">
                         ${a.type === 'in' ? '+' : '-'}${parseFloat(a.amount).toFixed(2)}
                     </div>
-                </div>`).join('') : '<p style="text-align:center; padding:20px; color:#9ca3af;">لا توجد عمليات</p>';
+                </div>
+            `).join('');
         }
 
         async function handleDeposit() {
             const amt = parseFloat(document.getElementById('deposit-amount').value);
             if (!amt || amt <= 0) return alert("أدخل مبلغ صحيح");
-            
             const btn = document.getElementById('btn-deposit');
             btn.disabled = true;
-            btn.innerText = "جاري المعالجة...";
 
             try {
                 await Pi.createPayment({
                     amount: amt,
-                    memo: "إيداع رصيد في Pi Vault",
+                    memo: "شحن رصيد",
                     metadata: { type: "deposit" }
                 }, {
                     onReadyForServerApproval: (id) => {
@@ -179,27 +193,25 @@
                         }).then(res => res.json());
                     },
                     onReadyForServerCompletion: async (id, txid) => {
-                        // تسجيل الإيداع في Supabase
-                        const { error } = await _supabase.from('donations').insert([{ 
+                        // حفظ في الجدول فور النجاح
+                        await _supabase.from('donations').insert([{ 
                             pi_user_id: currentUser.uid, 
                             username: currentUser.username, 
                             amount: amt 
                         }]);
-
+                        
+                        // إنهاء المعاملة برمجياً
                         await fetch('/api/pi/complete', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ paymentId: id, txid: txid })
                         });
 
-                        alert("تم الإيداع وتسجيل الرصيد!");
+                        alert("تم الإيداع!");
                         document.getElementById('deposit-amount').value = "";
-                        refreshData();
+                        refreshData(); // تحديث الرصيد من الجدول فوراً
                         btn.disabled = false;
-                        btn.innerText = "تعبئة المحفظة";
-                    },
-                    onCancel: () => { btn.disabled = false; btn.innerText = "تعبئة المحفظة"; },
-                    onError: () => { btn.disabled = false; btn.innerText = "تعبئة المحفظة"; }
+                    }
                 });
             } catch (e) { btn.disabled = false; }
         }
@@ -207,39 +219,25 @@
         async function handleWithdraw() {
             const addr = document.getElementById('withdraw-address').value;
             const amt = parseFloat(document.getElementById('withdraw-amount').value);
-            if (!addr || !amt || amt <= 0) return alert("أكمل البيانات");
+            if (!addr || !amt) return alert("أكمل البيانات");
 
-            const btn = document.getElementById('btn-withdraw');
-            btn.disabled = true;
+            // التسجيل في جدول السحوبات
+            const { error } = await _supabase.from('withdrawals').insert([{ 
+                pi_user_id: currentUser.uid, 
+                username: currentUser.username, 
+                amount: amt,
+                wallet_address: addr
+            }]);
 
-            try {
-                // 1. تسجيل السحب في Supabase أولاً
-                const { error } = await _supabase.from('withdrawals').insert([{ 
-                    pi_user_id: currentUser.uid, 
-                    username: currentUser.username, 
-                    amount: amt,
-                    wallet_address: addr
-                }]);
-
-                if (error) throw error;
-
-                // 2. إرسال طلب السحب للسيرفر (Back-end) ليقوم بالتحويل الفعلي
-                const res = await fetch('/api/withdraw', {
+            if (!error) {
+                // استدعاء السيرفر للتحويل الفعلي
+                await fetch('/api/withdraw', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ uid: currentUser.uid, amount: amt, walletAddress: addr })
                 });
-
-                if (res.ok) {
-                    alert("تم طلب السحب بنجاح جاري المعالجة على البلوكشين!");
-                    refreshData();
-                } else {
-                    alert("حدث خطأ في معالجة السحب بالسيرفر");
-                }
-            } catch (e) {
-                alert("فشل تسجيل عملية السحب");
-            } finally {
-                btn.disabled = false;
+                alert("تم طلب السحب بنجاح");
+                refreshData(); // تحديث الرصيد ليظهر الخصم من الجدول
             }
         }
 
