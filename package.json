@@ -1,0 +1,13 @@
+{
+  "name": "donate-way-pi",
+  "version": "1.0.0",
+  "description": "Pi Network Donation App",
+  "main": "index.html",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "stellar-sdk": "^12.1.0",
+    "node-fetch": "^2.7.0"
+  },
+  "author": "",
+  "license": "ISC"
+}
