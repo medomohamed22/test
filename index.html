@@ -170,9 +170,27 @@ body {
   pointer-events: none; 
 }
 
+
+/* --- Live Pi Price Top Bar --- */
+.top-pi-price-bar {
+  position: sticky;
+  top: 0;
+  z-index: 70;
+  width: 100%;
+  background: #000000;
+  color: var(--accent);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 7px 12px;
+  letter-spacing: 0.1px;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+}
+.top-pi-price-bar i { color: var(--accent); margin-inline-end: 6px; }
+
 /* --- Header --- */
 .header {
-  position: sticky; top: 0; z-index: 50;
+  position: sticky; top: 31px; z-index: 50;
   background: rgba(255,255,255,0.85);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(226, 232, 240, 0.6);
@@ -1657,6 +1675,11 @@ select.input-box {
 
 <div id="toast-container" class="toast-container"></div>
 
+<div id="topPiPriceBar" class="top-pi-price-bar">
+  <i class="fa-solid fa-arrows-rotate"></i>
+  <span data-i18n="top_pi_notice">يتم تحديث سعر Pi بشكل لحظي من OKX</span>
+</div>
+
 <header class="header">
   <div class="brand" style="font-family: 'Tajawal', sans-serif; display: flex; align-items: center;">
     <span style="font-weight: 900; font-size: 26px; letter-spacing: -0.5px;">
@@ -2080,7 +2103,7 @@ function usdToPi(usd) {
 function renderUsdPi(usd) {
   const piAmount = usdToPi(usd);
   const piPart = piUsdPrice ? `${formatPi(piAmount)} π` : `... π`;
-  return `<span>$${formatCurrency(usd)}</span> <span style="color:var(--text-muted);font-size:12px;">≈ ${piPart}</span>`;
+  return `<span style="font-size:15px;font-weight:900;color:#92400E;">${piPart}</span>`;
 }
 
 async function refreshPiPrice() {
@@ -2114,7 +2137,7 @@ const translations = {
     my_ads: "إعلاناتي", nav_home: "الرئيسية", nav_chats: "المحادثات", 
     nav_profile: "حسابي", sell_new_item: "بيع منتج جديد", 
     upload_text: "اضغط لاختيار الصور", upload_hint: "(حد أقصى 3 صور - حجم صغير)",
-    label_prod_name: "اسم المنتج", label_category: "القسم", label_price: "السعر بالدولار ($)", 
+    label_prod_name: "اسم المنتج", label_category: "القسم", label_price: "السعر بالدولار ($)", pi_price_updated: "يتم تحديث سعر Pi تلقائياً حسب OKX", top_pi_notice: "يتم تحديث سعر Pi بشكل لحظي من OKX", 
     label_desc: "الوصف", publish_btn: "نشر الإعلان", 
     msg_placeholder: "اكتب رسالة...", promoted_badge: "مميز", 
     message_seller: "مراسلة البائع", your_ad: "إعلانك", promote_ad_btn: "تمييز الإعلان", 
@@ -2150,7 +2173,7 @@ const translations = {
     my_ads: "My Ads", nav_home: "Home", nav_chats: "Chats", 
     nav_profile: "Profile", sell_new_item: "Sell New Item", 
     upload_text: "Tap to upload images", upload_hint: "(Max 3 images - Small size)",
-    label_prod_name: "Product Name", label_category: "Category", label_price: "Price in USD ($)", 
+    label_prod_name: "Product Name", label_category: "Category", label_price: "Price in USD ($)", pi_price_updated: "Pi price updates automatically from OKX", top_pi_notice: "Pi price is updated live from OKX", 
     label_desc: "Description", publish_btn: "Publish Ad", 
     msg_placeholder: "Type a message...", promoted_badge: "Promoted", 
     message_seller: "Message Seller", your_ad: "Your Ad", promote_ad_btn: "Promote Ad", 
@@ -2607,7 +2630,9 @@ function renderProducts() {
 
 function updateDetailPrice(p) {
   const usd = getProductUsdPrice(p);
-  document.getElementById('detail-price').innerHTML = `$${formatCurrency(usd)} <span style="font-size:14px;color:var(--text-muted);">≈ ${piUsdPrice ? formatPi(usdToPi(usd)) : '...'} π</span>`;
+  document.getElementById('detail-price').innerHTML = `
+    <span style="font-size:20px;font-weight:900;color:#92400E;">${piUsdPrice ? formatPi(usdToPi(usd)) : '...'} π</span>
+  `;
 }
 
 async function openProductDetails(pid) {
