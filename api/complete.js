@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
 const PI_API_KEY = process.env.PI_API_KEY;
 const PI_API_BASE = 'https://api.minepi.com/v2';
 
@@ -26,37 +26,61 @@ function parseMetadata(metadata) {
   return metadata;
 }
 
-async function applyPromotion(productId, days, level) {
-  const { data: prod } = await supabase
+async function updateProductWithFallback(productId, promotedUntil, level, paymentId, txid) {
+  const promotedLevel = Number(level || 1);
+  const attempts = [
+    { promoted_until: promotedUntil, promoted_level: promotedLevel, promotion_tier: promotedLevel, promoted_priority: promotedLevel, last_payment_id: paymentId || null, last_payment_txid: txid || null },
+    { promoted_until: promotedUntil, promoted_level: promotedLevel, promotion_tier: promotedLevel, promoted_priority: promotedLevel },
+    { promoted_until: promotedUntil, promoted_level: promotedLevel },
+    { promoted_until: promotedUntil, promotion_tier: promotedLevel },
+    { promoted_until: promotedUntil, promoted_priority: promotedLevel },
+    { promoted_until: promotedUntil }
+  ];
+
+  let lastError = null;
+  for (const payload of attempts) {
+    const { error } = await supabase.from('products').update(payload).eq('id', productId);
+    if (!error) return;
+    lastError = error;
+    if (!/column|schema cache|Could not find|last_payment|promoted_level|promotion_tier|promoted_priority/i.test(error.message || '')) break;
+  }
+  throw lastError || new Error('Promotion update failed');
+}
+
+async function applyPromotion(productId, days, level, paymentId, txid) {
+  const { data: prod, error: readError } = await supabase
     .from('products')
     .select('promoted_until')
     .eq('id', productId)
     .single();
 
-  let newExpiry = new Date();
+  if (readError) throw readError;
+
+  let expiry = new Date();
   if (prod && prod.promoted_until && new Date(prod.promoted_until) > new Date()) {
-    newExpiry = new Date(prod.promoted_until);
+    expiry = new Date(prod.promoted_until);
   }
-  newExpiry.setDate(newExpiry.getDate() + Number(days || 3));
+  expiry.setDate(expiry.getDate() + Number(days || 3));
+  const promotedUntil = expiry.toISOString();
 
-  const fullUpdate = {
-    promoted_until: newExpiry.toISOString(),
-    promoted_level: Number(level || 1),
-    promotion_tier: Number(level || 1)
-  };
+  await updateProductWithFallback(productId, promotedUntil, level, paymentId, txid);
+  return promotedUntil;
+}
 
-  let { error } = await supabase.from('products').update(fullUpdate).eq('id', productId);
+async function logPaymentWithFallback(row) {
+  const attempts = [
+    row,
+    { payment_id: row.payment_id, user_id: row.user_id, product_id: row.product_id, amount: row.amount, status: row.status, txid: row.txid },
+  ];
 
-  // لو الأعمدة الجديدة لسه مش موجودة في Supabase، التمييز هيشتغل بالعمود القديم فقط.
-  if (error && /promoted_level|promotion_tier|column/i.test(error.message || '')) {
-    ({ error } = await supabase
-      .from('products')
-      .update({ promoted_until: newExpiry.toISOString() })
-      .eq('id', productId));
+  for (const payload of attempts) {
+    const { error } = await supabase.from('payments').upsert(payload, { onConflict: 'payment_id' });
+    if (!error) return;
+    if (!/column|schema cache|Could not find|amount_pi|amount_usd|pi_usd_price|days|promoted_until/i.test(error.message || '')) {
+      console.warn('Payment log warning:', error);
+      return;
+    }
   }
-
-  if (error) throw error;
-  return newExpiry.toISOString();
 }
 
 module.exports = async function handler(req, res) {
@@ -65,7 +89,8 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { paymentId, txid } = readBody(req);
+    const body = readBody(req);
+    const { paymentId, txid } = body;
     if (!paymentId || !txid) return res.status(400).json({ error: 'paymentId and txid are required' });
 
     const completeRes = await fetch(`${PI_API_BASE}/payments/${paymentId}/complete`, {
@@ -86,33 +111,34 @@ module.exports = async function handler(req, res) {
     const piData = await piRes.json();
     const metadata = parseMetadata(piData.metadata);
 
-    const productId = metadata.productId || metadata.product_id || metadata.id;
-    if (!productId) return res.status(200).json({ error: 'Product ID missing from metadata' });
+    const productId = metadata.productId || metadata.product_id || metadata.id || body.productId || body.product_id;
+    if (!productId) return res.status(200).json({ error: 'Product ID missing from metadata/body' });
 
-    const amountPi = Number(piData.amount || 0);
-    const usdAmount = Number(metadata.usdAmount || 0);
-    const days = Number(metadata.days || (usdAmount >= 10 ? 14 : usdAmount >= 5 ? 7 : 3));
-    const level = Number(metadata.level || usdAmount || 1);
+    const amountPi = Number(piData.amount || metadata.piAmount || body.piAmount || 0);
+    const usdAmount = Number(metadata.usdAmount || body.usdAmount || 0);
+    const days = Number(metadata.days || body.days || (usdAmount >= 10 ? 14 : usdAmount >= 5 ? 7 : 3));
+    const level = Number(metadata.level || body.level || usdAmount || 1);
 
-    const { error: payError } = await supabase.from('payments').upsert({
+    const promotedUntil = await applyPromotion(productId, days, level, paymentId, txid);
+
+    await logPaymentWithFallback({
       payment_id: paymentId,
-      user_id: piData.user_uid,
+      user_id: piData.user_uid || metadata.sellerPiId || null,
       product_id: productId,
       amount: amountPi,
       amount_pi: amountPi,
       amount_usd: usdAmount || null,
-      pi_usd_price: metadata.piUsdPrice ? Number(metadata.piUsdPrice) : null,
+      pi_usd_price: metadata.piUsdPrice ? Number(metadata.piUsdPrice) : (body.piUsdPrice ? Number(body.piUsdPrice) : null),
       status: 'completed',
-      txid
-    }, { onConflict: 'payment_id' });
-
-    if (payError) console.error('payment log warning:', payError);
-
-    const promotedUntil = await applyPromotion(productId, days, level);
+      txid,
+      days,
+      promoted_until: promotedUntil
+    });
 
     return res.status(200).json({
       success: true,
       completed: true,
+      productId,
       daysAdded: days,
       promotedLevel: level,
       promotedUntil
