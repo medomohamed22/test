@@ -1989,8 +1989,8 @@ html, body, * {
     <div class="plan-container">
       <div class="plan-option" onclick="triggerPayment(1, 3, 1)">
         <div class="plan-info">
-          <span class="plan-price">$1</span>
-          <span class="plan-days" data-i18n="plan_1">باقة عادية - 1 دولار</span>
+          <span class="plan-price" id="planPi1" data-usd="1">... π</span>
+          <span class="plan-days" data-i18n="plan_1">باقة عادية - صلاحيتها ٣ أيام</span>
           <div class="plan-features">
             <span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_gold">شريط ذهبي</span></span>
             <span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_priority">أولوية الظهور</span></span>
@@ -2001,8 +2001,8 @@ html, body, * {
 
       <div class="plan-option" onclick="triggerPayment(5, 7, 5)">
         <div class="plan-info">
-          <span class="plan-price">$5</span>
-          <span class="plan-days" data-i18n="plan_5">باقة مميزة - 5 دولار</span>
+          <span class="plan-price" id="planPi5" data-usd="5">... π</span>
+          <span class="plan-days" data-i18n="plan_5">باقة مميزة - صلاحيتها أسبوع</span>
           <div class="plan-features">
             <span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_gold">شريط ذهبي</span></span>
             <span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_high_priority">أولوية عالية</span></span>
@@ -2013,8 +2013,8 @@ html, body, * {
 
       <div class="plan-option" onclick="triggerPayment(10, 14, 10)" style="border-color:var(--accent);">
         <div class="plan-info">
-          <span class="plan-price">$10</span>
-          <span class="plan-days" data-i18n="plan_10">باقة فوق المميز - 10 دولار</span>
+          <span class="plan-price" id="planPi10" data-usd="10">... π</span>
+          <span class="plan-days" data-i18n="plan_10">باقة فوق المميز - صلاحيتها أسبوعين</span>
           <div class="plan-features">
             <span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_gold">شريط ذهبي</span></span>
             <span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_high_priority">أعلى من المميز العادي</span></span>
@@ -2025,7 +2025,7 @@ html, body, * {
       </div>
 
       <div style="font-size:12px;color:var(--text-muted);text-align:center;line-height:1.7;">
-        يتم تحويل الدولار إلى Pi تلقائياً حسب سعر PI/USDT اللحظي من OKX وقت الدفع.
+        يتم تحديث مقدار Pi تلقائياً حسب سعر PI/USDT اللحظي من OKX وقت الدفع.
       </div>
     </div>
   </div>
@@ -2122,6 +2122,14 @@ function renderUsdPi(usd) {
   return `<span style="font-size:15px;font-weight:900;color:#92400E;">${piPart}</span>`;
 }
 
+function renderPromotionPlanPrices() {
+  document.querySelectorAll('.plan-price[data-usd]').forEach(node => {
+    const usd = Number(node.getAttribute('data-usd') || 0);
+    node.innerText = piUsdPrice ? `${formatPi(usdToPi(usd))} π` : `... π`;
+    node.title = piUsdPrice ? `Live OKX PI/USDT price: ${piUsdPrice}` : '';
+  });
+}
+
 async function refreshPiPrice() {
   try {
     const res = await fetch(`${API_BASE}/pi-price`, { cache: 'no-store' });
@@ -2130,6 +2138,7 @@ async function refreshPiPrice() {
     if (!data.priceUsd || Number(data.priceUsd) <= 0) throw new Error('Invalid PI price');
     piUsdPrice = Number(data.priceUsd);
     piPriceLastUpdated = data.ts || new Date().toISOString();
+    renderPromotionPlanPrices();
     renderProducts();
     const details = document.getElementById('view-details');
     if (details && !details.classList.contains('hidden')) {
@@ -2170,7 +2179,7 @@ const translations = {
     label_total_ads: "إعلانات:", ph_search: "ابحث عن منتج...", 
     label_location: "المحافظة", label_country: "الدولة", label_state: "المنطقة / المحافظة", 
     select_gov: "اختر المحافظة", promote_title: "اختر خطة التمييز", 
-    plan_1: "باقة عادية - 1 دولار", plan_5: "باقة مميزة - 5 دولار", plan_10: "باقة فوق المميز - 10 دولار",
+    plan_1: "باقة عادية - صلاحيتها ٣ أيام", plan_5: "باقة مميزة - صلاحيتها أسبوع", plan_10: "باقة فوق المميز - صلاحيتها أسبوعين",
     select_country_ph: "اختر الدولة", select_state_ph: "اختر الدولة أولاً",
     intro_title: "مرحباً بك في Deal Way!",
     intro_body_p1: "السوق الأسهل لمجتمع عملة Pi Network. 🌍",
@@ -2206,7 +2215,7 @@ const translations = {
     label_total_ads: "Total Ads:", ph_search: "Search products...", 
     label_location: "Location", label_country: "Country", label_state: "State / Province",
     select_gov: "Select Governorate", promote_title: "Choose Promotion Plan", 
-    plan_1: "Standard Package - $1", plan_5: "Featured Package - $5", plan_10: "Top Featured Package - $10",
+    plan_1: "Standard Package - valid for 3 days", plan_5: "Featured Package - valid for 1 week", plan_10: "Top Featured Package - valid for 2 weeks",
     select_country_ph: "Select Country", select_state_ph: "Select Country First",
     intro_title: "Welcome to Deal Way!",
     intro_body_p1: "The easiest marketplace for Pi Network community. 🌍",
@@ -2327,6 +2336,7 @@ function updateLanguage() {
   safeSetPlaceholder('searchInput', t('ph_search'));
 
   initCategories();
+  renderPromotionPlanPrices();
 
   if(globalProducts.length > 0) renderProducts();
   const profileView = el('view-profile');
