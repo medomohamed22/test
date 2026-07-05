@@ -2106,8 +2106,8 @@ function formatCurrency(num) {
 }
 
 function formatPi(num) {
-  if (!isFinite(num)) return "0.0";
-  return Number(num).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  if (!isFinite(num)) return "0";
+  return Math.round(Number(num)).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
 function getProductUsdPrice(p) {
