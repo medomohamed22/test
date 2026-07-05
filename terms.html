@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Terms of Service - Deal Way</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<style>
+:root{
+--primary:#6366F1;
+--primary-dark:#4F46E5;
+--accent:#F59E0B;
+--bg:#F8FAFC;
+--text:#0F172A;
+--muted:#64748B;
+--border:#E2E8F0;
+--danger:#EF4444;
+--radius:22px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+font-family:'Tajawal',sans-serif;
+background:linear-gradient(135deg,#F8FAFC,#FFF7ED);
+color:var(--text);
+line-height:1.9;
+min-height:100vh;
+}
+.header{
+position:sticky;
+top:0;
+background:rgba(255,255,255,.9);
+backdrop-filter:blur(20px);
+padding:16px;
+border-bottom:1px solid var(--border);
+z-index:10;
+}
+.header-inner{
+max-width:1000px;
+margin:auto;
+display:flex;
+justify-content:space-between;
+align-items:center;
+gap:15px;
+}
+.brand{
+font-size:28px;
+font-weight:900;
+text-decoration:none;
+}
+.brand .d{color:#8B5CF6}
+.brand .w{color:var(--accent)}
+.actions{
+display:flex;
+gap:10px;
+align-items:center;
+}
+.btn{
+border:none;
+padding:10px 18px;
+border-radius:999px;
+font-weight:800;
+cursor:pointer;
+text-decoration:none;
+font-family:inherit;
+font-size:14px;
+}
+.back{
+background:linear-gradient(135deg,var(--accent),#D97706);
+color:#fff;
+box-shadow:0 8px 24px rgba(245,158,11,.25);
+}
+.lang{
+background:#fff;
+border:2px solid var(--border);
+color:var(--primary-dark);
+}
+.container{
+max-width:1000px;
+margin:auto;
+padding:20px;
+}
+.hero{
+background:linear-gradient(135deg,var(--accent),#D97706);
+color:#fff;
+padding:35px;
+border-radius:30px;
+margin-bottom:20px;
+box-shadow:0 20px 45px rgba(245,158,11,.25);
+position:relative;
+overflow:hidden;
+}
+.hero:after{
+content:"";
+position:absolute;
+width:180px;
+height:180px;
+border-radius:50%;
+background:rgba(255,255,255,.14);
+left:-60px;
+top:-60px;
+}
+.hero h1{
+font-size:32px;
+margin-bottom:10px;
+position:relative;
+z-index:1;
+}
+.hero p{
+opacity:.9;
+position:relative;
+z-index:1;
+}
+.card{
+background:#fff;
+padding:25px;
+border-radius:var(--radius);
+margin-bottom:15px;
+border:1px solid var(--border);
+box-shadow:0 10px 30px rgba(0,0,0,.05);
+}
+.card h2{
+margin-bottom:12px;
+color:#B45309;
+display:flex;
+gap:10px;
+align-items:center;
+}
+.card p,.card li{
+color:var(--muted);
+font-weight:500;
+}
+ul{padding-inline-start:20px}
+.notice{
+border-inline-start:5px solid var(--danger);
+background:#FEF2F2;
+}
+.notice h2{
+color:var(--danger);
+}
+.footer{
+text-align:center;
+padding:25px;
+color:var(--muted);
+font-size:14px;
+}
+.footer a{
+color:var(--primary);
+font-weight:800;
+text-decoration:none;
+}
+@media(max-width:600px){
+.header-inner{
+flex-direction:column;
+}
+.actions{
+width:100%;
+}
+.btn{
+flex:1;
+text-align:center;
+}
+.hero h1{
+font-size:26px;
+}
+}
+</style>
+</head>
+
+<body>
+
+<header class="header">
+<div class="header-inner">
+<a class="brand" href="index.html">
+<span class="d">Deal</span><span class="w">Way</span>
+</a>
+
+<div class="actions">
+<button class="btn lang" onclick="toggleLanguage()" id="langBtn">AR</button>
+<a href="index.html" class="btn back" id="backBtn">← Back Home</a>
+</div>
+</div>
+</header>
+
+<main class="container">
+
+<section class="hero">
+<h1 id="title"><i class="fa-solid fa-file-contract"></i> Terms of Service</h1>
+<p id="updated">Last updated: July 5, 2026</p>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-handshake"></i> <span id="h1">Acceptance of Terms</span></h2>
+<p id="p1">By using Deal Way, you agree to comply with these Terms of Service. If you do not agree, please stop using the platform.</p>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-store"></i> <span id="h2">Platform Service</span></h2>
+<ul id="list1">
+<li>Deal Way provides a marketplace platform for users to list and browse products.</li>
+<li>Users are responsible for the accuracy of their listings.</li>
+<li>Deal Way does not own or directly sell the listed products.</li>
+<li>Transactions and agreements are made directly between users.</li>
+</ul>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-user-shield"></i> <span id="h3">User Responsibilities</span></h2>
+<p id="p3">Users must provide accurate information, respect other users, comply with applicable laws, and avoid any fraudulent or abusive behavior.</p>
+</section>
+
+<section class="card notice">
+<h2><i class="fa-solid fa-ban"></i> <span id="h4">Prohibited Content</span></h2>
+<p id="p4">Illegal, fraudulent, misleading, offensive, harmful, or prohibited content is not allowed. Deal Way may remove content or suspend accounts that violate these rules.</p>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-comments"></i> <span id="h5">Messages and Transactions</span></h2>
+<p id="p5">Any sale, purchase, payment, delivery, or agreement between users is the responsibility of those users. We recommend verifying products and sellers before completing any transaction.</p>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-rocket"></i> <span id="h6">Promotions and Payments</span></h2>
+<p id="p6">Deal Way may offer paid promotion services for listings. Once payment is completed, the promotion will be activated according to the selected plan. Payments may be non-refundable unless decided otherwise by Deal Way.</p>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-scale-balanced"></i> <span id="h7">Limitation of Liability</span></h2>
+<p id="p7">Deal Way is not responsible for disputes, losses, damages, fraud, or issues resulting from user-to-user transactions. The platform acts only as a listing and communication service.</p>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-pen-to-square"></i> <span id="h8">Changes to Terms</span></h2>
+<p id="p8">We may update these Terms at any time. Continued use of Deal Way after updates means you accept the revised Terms.</p>
+</section>
+
+<section class="card">
+<h2><i class="fa-solid fa-envelope"></i> <span id="h9">Contact</span></h2>
+<p id="p9">For questions, reports, or support requests, please contact Deal Way through the available support channels inside the platform.</p>
+</section>
+
+</main>
+
+<footer class="footer">
+© 2026 Deal Way —
+<a href="privacy.html" id="footerLink">Privacy Policy</a>
+</footer>
+
+<script>
+let lang = 'en';
+
+const data = {
+en: {
+dir: 'ltr',
+btn: 'AR',
+back: '← Back Home',
+title: 'Terms of Service',
+updated: 'Last updated: July 5, 2026',
+h1: 'Acceptance of Terms',
+p1: 'By using Deal Way, you agree to comply with these Terms of Service. If you do not agree, please stop using the platform.',
+h2: 'Platform Service',
+list: [
+'Deal Way provides a marketplace platform for users to list and browse products.',
+'Users are responsible for the accuracy of their listings.',
+'Deal Way does not own or directly sell the listed products.',
+'Transactions and agreements are made directly between users.'
+],
+h3: 'User Responsibilities',
+p3: 'Users must provide accurate information, respect other users, comply with applicable laws, and avoid any fraudulent or abusive behavior.',
+h4: 'Prohibited Content',
+p4: 'Illegal, fraudulent, misleading, offensive, harmful, or prohibited content is not allowed. Deal Way may remove content or suspend accounts that violate these rules.',
+h5: 'Messages and Transactions',
+p5: 'Any sale, purchase, payment, delivery, or agreement between users is the responsibility of those users. We recommend verifying products and sellers before completing any transaction.',
+h6: 'Promotions and Payments',
+p6: 'Deal Way may offer paid promotion services for listings. Once payment is completed, the promotion will be activated according to the selected plan. Payments may be non-refundable unless decided otherwise by Deal Way.',
+h7: 'Limitation of Liability',
+p7: 'Deal Way is not responsible for disputes, losses, damages, fraud, or issues resulting from user-to-user transactions. The platform acts only as a listing and communication service.',
+h8: 'Changes to Terms',
+p8: 'We may update these Terms at any time. Continued use of Deal Way after updates means you accept the revised Terms.',
+h9: 'Contact',
+p9: 'For questions, reports, or support requests, please contact Deal Way through the available support channels inside the platform.',
+footer: 'Privacy Policy'
+},
+
+ar: {
+dir: 'rtl',
+btn: 'EN',
+back: 'الرجوع للرئيسية',
+title: 'شروط الخدمة',
+updated: 'آخر تحديث: 5 يوليو 2026',
+h1: 'قبول الشروط',
+p1: 'باستخدامك لمنصة Deal Way فإنك توافق على الالتزام بشروط الخدمة هذه. إذا كنت لا توافق عليها، يرجى التوقف عن استخدام المنصة.',
+h2: 'خدمة المنصة',
+list: [
+'توفر Deal Way منصة لعرض وتصفح المنتجات بين المستخدمين.',
+'المستخدم مسؤول عن صحة ودقة الإعلانات التي ينشرها.',
+'Deal Way لا تملك المنتجات المعروضة ولا تبيعها بشكل مباشر.',
+'أي اتفاقات أو معاملات تتم مباشرة بين المستخدمين.'
+],
+h3: 'مسؤوليات المستخدم',
+p3: 'يلتزم المستخدم بتقديم معلومات صحيحة، واحترام المستخدمين الآخرين، والالتزام بالقوانين، وتجنب أي سلوك احتيالي أو مسيء.',
+h4: 'المحتوى المحظور',
+p4: 'يُمنع نشر أي محتوى غير قانوني أو احتيالي أو مضلل أو مسيء أو ضار أو محظور. يحق لـ Deal Way حذف المحتوى أو تعليق الحسابات المخالفة.',
+h5: 'الرسائل والمعاملات',
+p5: 'أي بيع أو شراء أو دفع أو تسليم أو اتفاق بين المستخدمين يكون على مسؤوليتهم الخاصة. ننصح بالتحقق من المنتج والبائع قبل إتمام أي معاملة.',
+h6: 'الترويج والمدفوعات',
+p6: 'قد توفر Deal Way خدمات ترويج مدفوعة للإعلانات. بعد إتمام الدفع، يتم تفعيل الترويج حسب الخطة المختارة. قد تكون المدفوعات غير قابلة للاسترداد إلا إذا قررت Deal Way غير ذلك.',
+h7: 'إخلاء المسؤولية',
+p7: 'لا تتحمل Deal Way مسؤولية النزاعات أو الخسائر أو الأضرار أو الاحتيال أو المشكلات الناتجة عن معاملات المستخدمين. دور المنصة يقتصر على عرض الإعلانات وتوفير وسيلة للتواصل.',
+h8: 'تعديل الشروط',
+p8: 'قد نقوم بتحديث هذه الشروط في أي وقت. استمرارك في استخدام Deal Way بعد التحديث يعني موافقتك على الشروط المعدلة.',
+h9: 'التواصل',
+p9: 'للاستفسارات أو البلاغات أو طلبات الدعم، يرجى التواصل مع Deal Way من خلال وسائل الدعم المتاحة داخل المنصة.',
+footer: 'سياسة الخصوصية'
+}
+};
+
+function applyLanguage(){
+const d = data[lang];
+
+document.documentElement.lang = lang;
+document.documentElement.dir = d.dir;
+
+document.getElementById('langBtn').innerText = d.btn;
+document.getElementById('backBtn').innerText = d.back;
+
+document.getElementById('title').innerHTML = '<i class="fa-solid fa-file-contract"></i> ' + d.title;
+document.getElementById('updated').innerText = d.updated;
+
+document.getElementById('h1').innerText = d.h1;
+document.getElementById('p1').innerText = d.p1;
+
+document.getElementById('h2').innerText = d.h2;
+document.getElementById('list1').innerHTML = d.list.map(item => `<li>${item}</li>`).join('');
+
+document.getElementById('h3').innerText = d.h3;
+document.getElementById('p3').innerText = d.p3;
+
+document.getElementById('h4').innerText = d.h4;
+document.getElementById('p4').innerText = d.p4;
+
+document.getElementById('h5').innerText = d.h5;
+document.getElementById('p5').innerText = d.p5;
+
+document.getElementById('h6').innerText = d.h6;
+document.getElementById('p6').innerText = d.p6;
+
+document.getElementById('h7').innerText = d.h7;
+document.getElementById('p7').innerText = d.p7;
+
+document.getElementById('h8').innerText = d.h8;
+document.getElementById('p8').innerText = d.p8;
+
+document.getElementById('h9').innerText = d.h9;
+document.getElementById('p9').innerText = d.p9;
+
+document.getElementById('footerLink').innerText = d.footer;
+}
+
+function toggleLanguage(){
+lang = lang === 'en' ? 'ar' : 'en';
+applyLanguage();
+}
+
+applyLanguage();
+</script>
+
+</body>
+</html>
