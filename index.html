@@ -2984,192 +2984,119 @@ function closePromoteModal() {
 }
 
 function triggerPayment(usdAmount, days, level) {
-  if(!currentPromoteProductId) return;
-  const idToPromote = currentPromoteProductId; 
+  if (!currentPromoteProductId) return;
+  const idToPromote = currentPromoteProductId;
   closePromoteModal();
   promoteProduct(idToPromote, usdAmount, days, level);
 }
 
-function calculatePromotedUntil(productId, days) {
-  const product = globalProducts.find(p => String(p.id) === String(productId));
-  let baseDate = new Date();
-  if (product && product.promoted_until && new Date(product.promoted_until) > new Date()) {
-    baseDate = new Date(product.promoted_until);
-  }
-  baseDate.setDate(baseDate.getDate() + Number(days || 3));
-  return baseDate.toISOString();
-}
-
-async function activatePromotionInDatabase(productId, days, level, paymentId, txid, piAmount, usdAmount) {
-  const promotedUntil = calculatePromotedUntil(productId, days);
-  const promotedLevel = Number(level || usdAmount || 1);
-
-  const updateAttempts = [
-    {
-      promoted_until: promotedUntil,
-      promoted_level: promotedLevel,
-      promotion_tier: promotedLevel,
-      promoted_priority: promotedLevel,
-      last_payment_id: paymentId || null,
-      last_payment_txid: txid || null
-    },
-    {
-      promoted_until: promotedUntil,
-      promoted_level: promotedLevel,
-      promotion_tier: promotedLevel,
-      promoted_priority: promotedLevel
-    },
-    {
-      promoted_until: promotedUntil,
-      promoted_level: promotedLevel
-    },
-    {
-      promoted_until: promotedUntil,
-      promotion_tier: promotedLevel
-    },
-    {
-      promoted_until: promotedUntil,
-      promoted_priority: promotedLevel
-    },
-    {
-      promoted_until: promotedUntil
-    }
-  ];
-
-  let lastError = null;
-  for (const payload of updateAttempts) {
-    const { error } = await sb.from('products').update(payload).eq('id', productId);
-    if (!error) {
-      const product = globalProducts.find(p => String(p.id) === String(productId));
-      if (product) {
-        product.promoted_until = promotedUntil;
-        product.promoted_level = promotedLevel;
-        product.promotion_tier = promotedLevel;
-        product.promoted_priority = promotedLevel;
-      }
-      try {
-        await sb.from('payments').upsert({
-          payment_id: paymentId,
-          product_id: productId,
-          user_id: user?.uid || null,
-          amount: Number(piAmount || 0),
-          amount_pi: Number(piAmount || 0),
-          amount_usd: Number(usdAmount || 0),
-          pi_usd_price: piUsdPrice || null,
-          status: 'completed',
-          txid: txid || null,
-          days: Number(days || 3),
-          promoted_until: promotedUntil
-        }, { onConflict: 'payment_id' });
-      } catch (e) {
-        console.warn('Payment log warning:', e);
-      }
-      return { promotedUntil, promotedLevel };
-    }
-    lastError = error;
-    if (!/column|schema cache|Could not find|last_payment|promoted_level|promotion_tier|promoted_priority|days|amount_pi|amount_usd|promoted_until/i.test(error.message || '')) break;
-  }
-  throw lastError || new Error('Promotion update failed');
-}
-
-async function finalizePromotionAfterPayment(productId, usdAmount, days, level, paymentId, txid, piAmount) {
-  let serverOk = false;
-  let serverJson = null;
-
-  try {
-    const res = await fetch(`${API_BASE}/complete`, { 
-      method: "POST", 
-      headers: { "Content-Type": "application/json" }, 
-      body: JSON.stringify({
-        paymentId,
-        txid,
-        productId: parseInt(productId) || productId,
-        product_id: parseInt(productId) || productId,
-        days: parseInt(days || 3),
-        level: parseInt(level || usdAmount || 1),
-        usdAmount: Number(usdAmount),
-        piAmount: Number(piAmount),
-        piUsdPrice: piUsdPrice
-      }) 
-    });
-    serverJson = await res.json().catch(() => ({}));
-    serverOk = res.ok && (serverJson.completed || serverJson.success);
-    if (!serverOk) console.warn('Server complete did not activate:', serverJson);
-  } catch (err) {
-    console.warn('Server complete error, trying Supabase fallback:', err);
-  }
-
-  // هذا السطر هو الضمان: بعد ما Pi ينادي onReadyForServerCompletion، نكتب التمييز في قاعدة البيانات مباشرة.
-  await activatePromotionInDatabase(productId, days, level, paymentId, txid, piAmount, usdAmount);
-
-  showToast("Promotion Active!", 'success'); 
-  await loadAllProducts();
-  if (user) await loadMyAds();
-  openProductDetails(productId);
-  return serverOk || serverJson;
-}
-
 async function promoteProduct(productId, usdAmount, days, level) {
-  if(!window.Pi) return showToast("Pi Browser Required", 'error');
-  if(!user) return showToast('toast_login_first', 'error');
+  if (!window.Pi) return showToast("Pi Browser Required", "error");
+  if (!user) return showToast("toast_login_first", "error");
   
   try {
     await refreshPiPrice();
-    if(!piUsdPrice) return showToast("Could not get PI price from OKX", 'error');
+    
+    if (!piUsdPrice) {
+      return showToast("Could not get PI price from OKX", "error");
+    }
+    
     const piAmount = Number(usdToPi(usdAmount).toFixed(8));
-    if(!piAmount || piAmount <= 0) return showToast("Invalid PI amount", 'error');
-
-    const paymentData = { 
+    
+    if (!piAmount || piAmount <= 0) {
+      return showToast("Invalid PI amount", "error");
+    }
+    
+    const paymentData = {
       amount: piAmount,
-      memo: `Promote Ad: ${productId} - ${piAmount} Pi`, 
+      memo: `Promote Ad: ${productId} - ${piAmount} Pi`,
       metadata: {
-        productId: parseInt(productId) || productId,
-        product_id: parseInt(productId) || productId,
         type: "promotion",
-        days: parseInt(days || 3),
-        level: parseInt(level || usdAmount || 1),
+        productId: Number(productId),
+        product_id: Number(productId),
+        days: Number(days),
+        level: Number(level),
         usdAmount: Number(usdAmount),
-        piUsdPrice: piUsdPrice,
-        piAmount: piAmount,
+        piAmount: Number(piAmount),
+        piUsdPrice: Number(piUsdPrice),
         sellerPiId: user.uid
-      } 
+      }
     };
     
     const paymentCallbacks = {
-      onReadyForServerApproval: async (paymentId) => { 
-        try { 
-          await fetch(`${API_BASE}/approve`, { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" }, 
-            body: JSON.stringify({ paymentId }) 
-          }); 
-        } catch (e) { 
-          console.error('Approval error:', e);
-          showToast("Connection Error", 'error'); 
-        } 
+      onReadyForServerApproval: async (paymentId) => {
+        try {
+          const res = await fetch(`${API_BASE}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentId })
+          });
+          
+          if (!res.ok) {
+            console.error("Approval failed:", await res.text());
+            showToast("Approval Error", "error");
+          }
+        } catch (e) {
+          console.error("Approval error:", e);
+          showToast("Connection Error", "error");
+        }
       },
-      onServerApproval: () => { console.log("Approved"); }, 
-      onCancel: () => { console.log("Cancelled"); }, 
-      onError: (error) => { 
-        console.error('Payment error:', error);
-        showToast("Payment Failed", 'error'); 
+      
+      onServerApproval: () => {
+        console.log("Payment approved by server");
       },
+      
+      onCancel: () => {
+        showToast("Payment Cancelled", "warning");
+      },
+      
+      onError: (error) => {
+        console.error("Payment error:", error);
+        showToast("Payment Failed", "error");
+      },
+      
       onReadyForServerCompletion: async (paymentId, txid) => {
         try {
-          await finalizePromotionAfterPayment(productId, usdAmount, days, level, paymentId, txid, piAmount);
-        } catch (err) { 
-          console.error('Activation failed:', err);
-          showToast(friendlyDbError(err) || "Activation Error", 'error'); 
+          const res = await fetch(`${API_BASE}/complete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              paymentId,
+              txid,
+              productId: Number(productId),
+              days: Number(days),
+              level: Number(level),
+              usdAmount: Number(usdAmount),
+              piAmount: Number(piAmount),
+              piUsdPrice: Number(piUsdPrice)
+            })
+          });
+          
+          const json = await res.json().catch(() => ({}));
+          
+          if (res.ok && json.success) {
+            showToast("Promotion Active!", "success");
+            await loadAllProducts();
+            if (user) await loadMyAds();
+            openProductDetails(productId);
+          } else {
+            console.error("Activation error:", json);
+            showToast(json.error || "Activation Error", "error");
+          }
+        } catch (err) {
+          console.error("Completion error:", err);
+          showToast("Connection Error", "error");
         }
       }
     };
+    
     Pi.createPayment(paymentData, paymentCallbacks);
-  } catch(err) { 
-    console.error('Payment setup error:', err);
-    showToast("Payment Error", 'error'); 
+    
+  } catch (err) {
+    console.error("Payment setup error:", err);
+    showToast("Payment Error", "error");
   }
 }
-
 async function deleteProduct(id){ 
   if(confirm(t('confirm_delete'))) { 
     await sb.from("products").delete().eq("id",id); 
