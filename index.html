@@ -2031,7 +2031,30 @@ let currentLang = localStorage.getItem('lang') || 'en';
 let selectedFiles = [];
 let currentPromoteProductId = null;
 let piUsdPrice = null;
-let piPriceLastUpdated = null; 
+let piPriceLastUpdated = null;
+let isSupabaseReady = false;
+
+function el(id) { return document.getElementById(id); }
+function safeSetText(id, value) { const node = el(id); if (node) node.innerText = value; }
+function safeSetHtml(id, value) { const node = el(id); if (node) node.innerHTML = value; }
+function safeSetPlaceholder(id, value) { const node = el(id); if (node) node.placeholder = value; }
+
+function friendlyDbError(error) {
+  if (!error) return '';
+  const msg = error.message || String(error);
+  if (/row-level security|RLS|policy/i.test(msg)) return 'Supabase RLS يمنع العملية. شغّل ملف SQL المرفق أو أضف السياسات المطلوبة.';
+  if (/JWT|Invalid API key|apikey|project/i.test(msg)) return 'مفتاح Supabase أو رابط المشروع غير صحيح.';
+  if (/column .* does not exist|schema cache|Could not find/i.test(msg)) return 'أعمدة قاعدة البيانات ناقصة. شغّل ملف SQL المرفق.';
+  return msg;
+}
+
+async function waitForSupabaseSdk() {
+  for (let i = 0; i < 50; i++) {
+    if (window.supabase && window.supabase.createClient) return true;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return false;
+}
 
 // --- Price Helpers: USD -> Pi using live OKX price ---
 function formatCurrency(num) {
@@ -2170,10 +2193,31 @@ let globalProducts = [];
 let activeCategory = 'all';
 
 document.addEventListener("DOMContentLoaded", async () => {
-  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  updateLanguage(); initPi(); refreshPiPrice();
-loadAllProducts(); initLocations();
+  updateLanguage();
   initDragAndDrop();
+
+  const sdkReady = await waitForSupabaseSdk();
+  if (!sdkReady) {
+    console.error('Supabase SDK failed to load');
+    showToast('Supabase SDK failed to load', 'error');
+    return;
+  }
+
+  try {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+    isSupabaseReady = true;
+  } catch (e) {
+    console.error('Supabase init error:', e);
+    showToast('Supabase init error', 'error');
+    return;
+  }
+
+  initPi();
+  refreshPiPrice();
+  loadAllProducts();
+  initLocations();
 });
 
 function initDragAndDrop() {
@@ -2227,27 +2271,27 @@ function toggleLanguage() {
 function t(key) { return translations[currentLang][key] || key; }
 
 function updateLanguage() {
-  document.getElementById('langText').innerText = currentLang === 'ar' ? 'EN' : 'AR';
-  document.getElementById('introLangText').innerText = translations[currentLang].intro_switch_btn;
-  
-  document.documentElement.lang = currentLang;
+  safeSetText('langText', currentLang === 'ar' ? 'EN' : 'AR');
+  safeSetText('introLangText', translations[currentLang].intro_switch_btn);
 
-  document.querySelectorAll('[data-i18n]').forEach(el => { 
-      const key = el.getAttribute('data-i18n'); 
-      if (translations[currentLang][key]) {
-          el.innerHTML = translations[currentLang][key]; 
-      }
+  document.documentElement.lang = currentLang;
+  document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+
+  document.querySelectorAll('[data-i18n]').forEach(elm => {
+      const key = elm.getAttribute('data-i18n');
+      if (translations[currentLang][key]) elm.innerHTML = translations[currentLang][key];
   });
-  
-  document.getElementById('addName').placeholder = t('ph_prod_name');
-  document.getElementById('addDesc').placeholder = t('ph_desc');
-  document.getElementById('msgInput').placeholder = t('msg_placeholder');
-  document.getElementById('searchInput').placeholder = t('ph_search');
+
+  safeSetPlaceholder('addName', t('ph_prod_name'));
+  safeSetPlaceholder('addDesc', t('ph_desc'));
+  safeSetPlaceholder('msgInput', t('msg_placeholder'));
+  safeSetPlaceholder('searchInput', t('ph_search'));
 
   initCategories();
-  
+
   if(globalProducts.length > 0) renderProducts();
-  if(user && !document.getElementById('view-profile').classList.contains('hidden')) loadMyAds();
+  const profileView = el('view-profile');
+  if(user && profileView && !profileView.classList.contains('hidden')) loadMyAds();
 }
 
 function showToast(messageKey, type = 'success') {
@@ -2405,29 +2449,52 @@ function initPi(){
 }
 
 async function handleLogin(uid, username) {
-  const { data: userData } = await sb.from("users").select("is_banned").eq("pi_id", uid).single();
-  if (userData && userData.is_banned === true) { 
-    document.getElementById("banned-screen").classList.remove("hidden"); 
-    document.getElementById("banned-screen").style.display = "flex"; 
-    return; 
+  if(!isSupabaseReady || !sb) return showToast('Database not ready', 'error');
+
+  const { data: userData, error: readError } = await sb
+    .from('users')
+    .select('is_banned')
+    .eq('pi_id', uid)
+    .maybeSingle();
+
+  if (readError) {
+    console.error('user read error:', readError);
+    return showToast(friendlyDbError(readError), 'error');
   }
+
+  if (userData && userData.is_banned === true) {
+    el('banned-screen').classList.remove('hidden');
+    el('banned-screen').style.display = 'flex';
+    return;
+  }
+
+  const { error: upsertError } = await sb
+    .from('users')
+    .upsert({ pi_id: uid, username: username }, { onConflict: 'pi_id' });
+
+  if (upsertError) {
+    console.error('user upsert error:', upsertError);
+    return showToast(friendlyDbError(upsertError), 'error');
+  }
+
   user = { uid, username };
-  await sb.from("users").upsert({ pi_id: uid, username: username }, { onConflict: 'pi_id' });
-  document.getElementById("loginBtn").classList.add("hidden");
-  document.getElementById("headerUser").classList.remove("hidden");
-  document.getElementById("userDispName").innerText = username;
-  document.getElementById("profile-guest").classList.add("hidden");
-  document.getElementById("profile-user").classList.remove("hidden");
-  document.getElementById("p-username").innerText = username;
-  
-  loadMyAds(); loadInbox();
+  el('loginBtn').classList.add('hidden');
+  el('headerUser').classList.remove('hidden');
+  safeSetText('userDispName', username);
+  el('profile-guest').classList.add('hidden');
+  el('profile-user').classList.remove('hidden');
+  safeSetText('p-username', username);
+
+  loadMyAds();
+  loadInbox();
   checkUnreadMessages();
-  setInterval(checkUnreadMessages, 10000); 
+  setInterval(checkUnreadMessages, 10000);
 }
 
 async function checkUnreadMessages() {
   if(!user) return;
-  const { count } = await sb.from('messages').select('*', { count: 'exact', head: true }).eq('receiver_pi_id', user.uid).eq('is_read', false);
+  const { count, error } = await sb.from('messages').select('*', { count: 'exact', head: true }).eq('receiver_pi_id', user.uid).eq('is_read', false);
+  if (error) { console.error('checkUnreadMessages error:', error); return; }
   const badge = document.getElementById('chat-badge');
   if(count && count > 0) { 
     badge.innerText = count > 9 ? '+9' : count; 
@@ -2452,19 +2519,32 @@ function sortProductsByPromotion(a, b) {
 }
 
 async function loadAllProducts() {
-  const { data } = await sb.from("products").select("*").order("promoted_until", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false });
-  document.getElementById("loading").style.display = "none";
-  if(data) { 
-    globalProducts = data.sort(sortProductsByPromotion); 
-    renderProducts(); 
-  } else { 
-    document.getElementById("products-list").innerHTML = `
+  if(!isSupabaseReady || !sb) return;
+  const loading = el('loading');
+  if (loading) loading.style.display = 'block';
+
+  const { data, error } = await sb
+    .from('products')
+    .select('*')
+    .order('promoted_until', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false });
+
+  if (loading) loading.style.display = 'none';
+
+  if(error) {
+    console.error('loadAllProducts error:', error);
+    safeSetHtml('products-list', `
       <div class="empty-state" style="grid-column:1/-1;">
-        <div class="empty-state-icon"><i class="fa-solid fa-circle-exclamation"></i></div>
-        <h3>Error Loading</h3>
+        <div class="empty-state-icon"><i class="fa-solid fa-database"></i></div>
+        <h3>Database Error</h3>
+        <p style="direction:ltr;unicode-bidi:plaintext;">${friendlyDbError(error)}</p>
       </div>
-    `; 
+    `);
+    return;
   }
+
+  globalProducts = (data || []).sort(sortProductsByPromotion);
+  renderProducts();
 }
 
 function filterProducts() { renderProducts(); }
@@ -2627,7 +2707,12 @@ async function loadMyAds() {
   list.innerHTML = `<div class="skeleton" style="height:200px;width:100%;"></div>`.repeat(2);
   
   // 1. جلب منتجاتي
-  const { data: products } = await sb.from("products").select("*").eq("seller_pi_id", user.uid).order("created_at", {ascending:false});
+  const { data: products, error: productsError } = await sb.from("products").select("*").eq("seller_pi_id", user.uid).order("created_at", {ascending:false});
+  if (productsError) {
+    console.error('loadMyAds error:', productsError);
+    list.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon"><i class="fa-solid fa-database"></i></div><h3>Database Error</h3><p style="direction:ltr;unicode-bidi:plaintext;">${friendlyDbError(productsError)}</p></div>`;
+    return;
+  }
   
   // 2. حساب إجمالي المشاهدات الحقيقي لجميع المنتجات
   let totalViews = 0;
@@ -2760,67 +2845,79 @@ function resetForm() {
 }
 
 async function submitProduct(){
-    const name = document.getElementById("addName").value;
-    const price = document.getElementById("addPrice").value;
-    const desc = document.getElementById("addDesc").value;
-    const category = document.getElementById("addCategory").value;
-    const country = document.getElementById("addCountry").value;
-    const state = document.getElementById("addState").value; 
+    if(!user) return showToast('toast_login_first', 'error');
+    if(!isSupabaseReady || !sb) return showToast('Database not ready', 'error');
 
-    const btn = document.getElementById("publishBtn");
-    
-    if(!name || !price || !category || !country || !state) {
+    const name = el('addName').value.trim();
+    const price = el('addPrice').value;
+    const desc = el('addDesc').value.trim();
+    const category = el('addCategory').value;
+    const country = el('addCountry').value;
+    const state = el('addState').value;
+    const btn = el('publishBtn');
+
+    if(!name || !price || Number(price) <= 0 || !category || !country || !state) {
       showToast('toast_fill_data', 'error');
       return;
     }
-    
-    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + t('loading'); 
-    btn.disabled=true; 
+
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> ' + t('loading');
+    btn.disabled = true;
     let uploadedUrls = [];
-    
-    if(selectedFiles.length > 0){ 
-      try { 
-        const options = { maxSizeMB: 0.8, maxWidthOrHeight: 1200, useWebWorker: true, fileType: "image/jpeg" }; 
-        for(const file of selectedFiles) { 
-          const compressedFile = await imageCompression(file, options); 
-          const path = `${user.uid}/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.jpg`; 
-          const {error} = await sb.storage.from("images").upload(path, compressedFile); 
-          if(error) throw error; 
-          const url = sb.storage.from("images").getPublicUrl(path).data.publicUrl; 
-          uploadedUrls.push(url); 
-        } 
-      } catch (error) { 
-        console.error(error); 
-        showToast('toast_upload_fail', 'error'); 
-        btn.innerHTML = t('publish_btn'); 
-        btn.disabled=false; 
-        return; 
-      } 
+
+    try {
+      if(selectedFiles.length > 0){
+        const options = { maxSizeMB: 0.8, maxWidthOrHeight: 1200, useWebWorker: true, fileType: 'image/jpeg' };
+        for(const file of selectedFiles) {
+          const compressedFile = await imageCompression(file, options);
+          const path = `${user.uid}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`;
+          const { error } = await sb.storage.from('images').upload(path, compressedFile, { upsert: false });
+          if(error) throw error;
+          uploadedUrls.push(sb.storage.from('images').getPublicUrl(path).data.publicUrl);
+        }
+      }
+
+      const usd = Number(price);
+      const fullRow = {
+        name,
+        price: usd,
+        price_usd: usd,
+        price_pi_snapshot: piUsdPrice ? usdToPi(usd) : null,
+        pi_usd_snapshot: piUsdPrice || null,
+        description: desc,
+        images: uploadedUrls,
+        image_url: uploadedUrls[0] || null,
+        seller_pi_id: user.uid,
+        seller_username: user.username,
+        category,
+        location: state,
+        country
+      };
+
+      let { error } = await sb.from('products').insert(fullRow);
+
+      // توافق مع قاعدة بياناتك القديمة لو أعمدة الدولار/اللقطة غير مضافة.
+      if (error && /price_usd|price_pi_snapshot|pi_usd_snapshot|schema cache|column/i.test(error.message || '')) {
+        const fallbackRow = { ...fullRow };
+        delete fallbackRow.price_usd;
+        delete fallbackRow.price_pi_snapshot;
+        delete fallbackRow.pi_usd_snapshot;
+        ({ error } = await sb.from('products').insert(fallbackRow));
+      }
+
+      if(error) throw error;
+
+      await loadAllProducts();
+      await loadMyAds();
+      showToast('toast_success_add');
+      closeAddModal();
+    } catch (error) {
+      console.error('submitProduct error:', error);
+      showToast(friendlyDbError(error), 'error');
+    } finally {
+      btn.innerHTML = t('publish_btn');
+      btn.disabled = false;
     }
-    
-    await sb.from("products").insert({ 
-      name, 
-      price: parseFloat(price),
-      price_usd: parseFloat(price),
-      price_pi_snapshot: piUsdPrice ? usdToPi(price) : null,
-      pi_usd_snapshot: piUsdPrice || null,
-      description: desc, 
-      images: uploadedUrls, 
-      image_url: uploadedUrls.length > 0 ? uploadedUrls[0] : null, 
-      seller_pi_id: user.uid, 
-      seller_username: user.username, 
-      category: category, 
-      location: state,
-      country: country
-    });
-    
-    await loadAllProducts();
-    await loadMyAds();
-    
-    showToast('toast_success_add'); 
-    closeAddModal(); 
-    btn.innerHTML = t('publish_btn'); 
-    btn.disabled=false;
 }
 
 // --- PROMOTION LOGIC ---
