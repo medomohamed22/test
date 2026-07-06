@@ -201,10 +201,10 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,*::-webkit-scrollbar{width:0!imp
   </div>
   <div id="view-details" class="view-section hidden"><div style="margin-bottom:20px"><button onclick="nav('home')" class="btn btn-ghost"><i class="fa-solid fa-arrow-right"></i> <span data-i18n="btn_back">رجوع</span></button></div><div class="slider-container"><div class="slider-wrapper" id="detail-slider"></div><div class="slider-dots" id="detail-dots"></div></div><h2 id="detail-title" style="margin:0 0 12px 0;line-height:1.3;font-size:24px;font-weight:800"></h2><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px"><div class="price-pill" style="font-size:18px;padding:10px 24px"><span id="detail-price"></span></div><div id="detail-location" style="background:linear-gradient(135deg,#F1F5F9,#E2E8F0);padding:10px 16px;border-radius:var(--radius-full);font-size:14px;color:var(--text-main);font-weight:600;display:flex;align-items:center;gap:8px;border:1px solid var(--border)"><i class="fa-solid fa-location-dot" style="color:var(--primary)"></i> <span id="detail-loc-text"></span></div></div><div style="background:white;padding:24px;border-radius:var(--radius-xl);border:1px solid var(--border);margin-bottom:20px;box-shadow:var(--shadow-sm)"><h4 style="margin:0 0 12px 0;font-size:16px;color:var(--text-main);display:flex;align-items:center;gap:8px"><i class="fa-solid fa-align-right" style="color:var(--primary)"></i><span data-i18n="label_desc">الوصف</span></h4><p id="detail-desc" style="color:#475569;font-size:15px;line-height:1.8;margin:0;white-space:pre-wrap"></p><div style="margin-top:15px;padding-top:15px;border-top:1px solid var(--border);font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:6px"><i class="fa-solid fa-eye" style="color:var(--primary)"></i><span data-i18n="label_views">المشاهدات:</span> <span id="detail-views" style="font-weight:bold;color:var(--text-main)">0</span></div></div><div class="seller-card"><div class="seller-avatar" id="detail-seller-avatar"></div><div class="seller-info"><div id="detail-seller-name" class="seller-name"></div><div class="seller-stats"><div><i class="fa-solid fa-calendar-days"></i> <span data-i18n="label_joined">انضم:</span> <span id="detail-join-date">...</span></div><div><i class="fa-solid fa-box-open"></i> <span data-i18n="label_total_ads">عدد الإعلانات:</span> <span id="detail-ad-count">...</span></div></div></div></div><div id="detail-actions" style="margin-top:24px;display:flex;gap:12px;flex-direction:column"></div></div>
   <div id="view-chats" class="view-section hidden"><div class="section-header"><div class="section-icon" style="background:linear-gradient(135deg,#10B981,#059669)"><i class="fa-solid fa-comments"></i></div><h3 data-i18n="inbox_title">الرسائل الواردة</h3></div><div id="inbox-list"></div></div>
-  <div id="view-profile" class="view-section hidden"><button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="linkTelegramBot()">
+  <div id="view-profile" class="view-section hidden"><div id="profile-guest"><div class="guest-card"><div class="guest-icon"><i class="fa-solid fa-user-lock"></i></div><h3 style="font-size:24px;color:var(--text-main);margin-bottom:8px" data-i18n="guest_title">أنت زائر</h3><p style="color:var(--text-muted);font-size:16px;margin-bottom:24px" data-i18n="guest_msg">سجل الدخول لإدارة إعلاناتك.</p><button onclick="document.getElementById('loginBtn').click()" class="btn btn-primary" style="padding:16px 32px"><i class="fa-solid fa-right-to-bracket"></i> <span data-i18n="login">دخول</span></button></div></div><div id="profile-user" class="hidden"><button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="linkTelegramBot()">
   <i class="fa-brands fa-telegram"></i>
   ربط بوت تيليجرام
-</button><div id="profile-guest"><div class="guest-card"><div class="guest-icon"><i class="fa-solid fa-user-lock"></i></div><h3 style="font-size:24px;color:var(--text-main);margin-bottom:8px" data-i18n="guest_title">أنت زائر</h3><p style="color:var(--text-muted);font-size:16px;margin-bottom:24px" data-i18n="guest_msg">سجل الدخول لإدارة إعلاناتك.</p><button onclick="document.getElementById('loginBtn').click()" class="btn btn-primary" style="padding:16px 32px"><i class="fa-solid fa-right-to-bracket"></i> <span data-i18n="login">دخول</span></button></div></div><div id="profile-user" class="hidden"><div class="profile-header"><div class="profile-avatar-large"><i class="fa-solid fa-user"></i></div><h3 id="p-username" class="profile-name">...</h3><div class="profile-badge"><i class="fa-solid fa-circle-check"></i><span>Pioneer</span></div></div><div class="stats-grid"><div class="stat-card"><div class="stat-value" id="stat-ads">0</div><div class="stat-label" data-i18n="my_ads">إعلاناتي</div></div><div class="stat-card"><div class="stat-value" id="stat-views">0</div><div class="stat-label" data-i18n="stat_views">المشاهدات</div></div><div class="stat-card"><div class="stat-value" id="stat-chats">0</div><div class="stat-label" data-i18n="stat_chats">المحادثات</div></div></div><button class="btn btn-primary" style="width:100%;margin-bottom:24px;padding:18px" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> <span data-i18n="add_ad_btn">إضافة إعلان جديد</span></button><h4 style="margin:0 0 16px;font-size:18px;display:flex;align-items:center;gap:10px"><i class="fa-solid fa-layer-group" style="color:var(--primary)"></i><span data-i18n="my_ads">إعلاناتي</span></h4><div id="my-ads-list" class="products-grid" style="margin-bottom:24px"></div><div class="links-list"><a href="privacy.html" class="link-item"><i class="fa-solid fa-shield-halved"></i><span data-i18n="link_privacy">سياسة الخصوصية</span><i class="fa-solid fa-chevron-left"></i></a><a href="terms.html" class="link-item"><i class="fa-solid fa-file-contract"></i><span data-i18n="link_terms">شروط الخدمة</span><i class="fa-solid fa-chevron-left"></i></a></div></div></div>
+</button><div class="profile-header"><div class="profile-avatar-large"><i class="fa-solid fa-user"></i></div><h3 id="p-username" class="profile-name">...</h3><div class="profile-badge"><i class="fa-solid fa-circle-check"></i><span>Pioneer</span></div></div><div class="stats-grid"><div class="stat-card"><div class="stat-value" id="stat-ads">0</div><div class="stat-label" data-i18n="my_ads">إعلاناتي</div></div><div class="stat-card"><div class="stat-value" id="stat-views">0</div><div class="stat-label" data-i18n="stat_views">المشاهدات</div></div><div class="stat-card"><div class="stat-value" id="stat-chats">0</div><div class="stat-label" data-i18n="stat_chats">المحادثات</div></div></div><button class="btn btn-primary" style="width:100%;margin-bottom:24px;padding:18px" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> <span data-i18n="add_ad_btn">إضافة إعلان جديد</span></button><h4 style="margin:0 0 16px;font-size:18px;display:flex;align-items:center;gap:10px"><i class="fa-solid fa-layer-group" style="color:var(--primary)"></i><span data-i18n="my_ads">إعلاناتي</span></h4><div id="my-ads-list" class="products-grid" style="margin-bottom:24px"></div><div class="links-list"><a href="privacy.html" class="link-item"><i class="fa-solid fa-shield-halved"></i><span data-i18n="link_privacy">سياسة الخصوصية</span><i class="fa-solid fa-chevron-left"></i></a><a href="terms.html" class="link-item"><i class="fa-solid fa-file-contract"></i><span data-i18n="link_terms">شروط الخدمة</span><i class="fa-solid fa-chevron-left"></i></a></div></div></div>
 </div>
 <nav class="bottom-nav"><button class="nav-item active" onclick="nav('home')"><i class="fa-solid fa-house-chimney"></i> <span data-i18n="nav_home">الرئيسية</span></button><button class="nav-item" onclick="nav('chats')"><i class="fa-solid fa-comment-dots"></i> <span data-i18n="nav_chats">المحادثات</span><span id="chat-badge" class="nav-badge hidden">0</span></button><button class="nav-item" onclick="nav('profile')"><i class="fa-solid fa-user-gear"></i> <span data-i18n="nav_profile">حسابي</span></button></nav>
 <div id="addModal" class="modal" onclick="if(event.target==this) closeAddModal()"><div class="sheet"><div class="modal-header"><div class="modal-title"><i class="fa-solid fa-camera"></i><span data-i18n="sell_new_item">بيع منتج جديد</span></div><button onclick="closeAddModal()" class="close-btn"><i class="fa-solid fa-xmark"></i></button></div><div id="image-previews" class="previews-container"></div><label class="file-upload-wrapper" id="dropZone"><input id="addImg" type="file" accept="image/*" multiple style="display:none" onchange="handleFileSelect(this)"><div class="file-upload-content" id="upload-placeholder"><i class="fa-solid fa-cloud-arrow-up file-upload-icon"></i><div class="file-upload-text" data-i18n="upload_text">اضغط لاختيار الصور</div><div class="file-upload-note" data-i18n="upload_hint">(حد أقصى 3 صور - حجم صغير)</div></div></label><div class="form-group"><label class="form-label"><i class="fa-solid fa-tag"></i><span data-i18n="label_prod_name">اسم المنتج</span></label><input id="addName" class="input-box" placeholder="" /></div><div class="form-group"><label class="form-label"><i class="fa-solid fa-folder-open"></i><span data-i18n="label_category">القسم</span></label><select id="addCategory" class="input-box"></select></div><div class="form-group"><label class="form-label"><i class="fa-solid fa-earth-americas"></i><span data-i18n="label_country">Country</span></label><select id="addCountry" class="input-box" onchange="loadStates('addCountry','addState')"><option value="" disabled selected>Select Country</option></select></div><div class="form-group"><label class="form-label"><i class="fa-solid fa-map-location-dot"></i><span data-i18n="label_state">State / Province</span></label><select id="addState" class="input-box"><option value="" disabled selected>Select Country First</option></select></div><div class="form-group"><label class="form-label"><i class="fa-solid fa-coins"></i><span data-i18n="label_price">السعر بالدولار ($)</span></label><input id="addPrice" type="number" class="input-box" placeholder="0.00" /></div><div class="form-group"><label class="form-label"><i class="fa-solid fa-align-left"></i><span data-i18n="label_desc">الوصف</span></label><textarea id="addDesc" class="input-box" placeholder=""></textarea></div><button id="publishBtn" class="btn btn-primary" style="width:100%;padding:18px" onclick="submitProduct()" data-i18n="publish_btn">نشر الإعلان</button></div></div>
@@ -219,34 +219,42 @@ function makeTelegramToken() {
 }
 
 function openTelegramExternal(botUsername, token) {
-  const cleanUsername = String(botUsername).replace('@', '').trim();
-  
-  const tgAppUrl = `tg://resolve?domain=${encodeURIComponent(cleanUsername)}&start=${encodeURIComponent(token)}`;
-  const tgWebUrl = `https://t.me/${encodeURIComponent(cleanUsername)}?start=${encodeURIComponent(token)}`;
-  
+  const cleanUsername = String(botUsername).replace("@", "").trim();
+
+  const tgAppUrl =
+    "tg://resolve?domain=" +
+    encodeURIComponent(cleanUsername) +
+    "&start=" +
+    encodeURIComponent(token);
+
+  const tgWebUrl =
+    "https://t.me/" +
+    encodeURIComponent(cleanUsername) +
+    "?start=" +
+    encodeURIComponent(token);
+
+  // محاولة فتح تطبيق تيليجرام خارج Pi Browser
   window.location.href = tgAppUrl;
-  
-  setTimeout(() => {
+
+  // fallback لو Pi Browser منع فتح التطبيق
+  setTimeout(function () {
     window.location.href = tgWebUrl;
   }, 1200);
 }
 
 async function linkTelegramBot() {
-  if (!user) return showToast('toast_login_first', 'error');
-  
-  if (!BOT_USERNAME || BOT_USERNAME === "dealway_notify_bot") {
-    return showToast('ضع اسم البوت الحقيقي في BOT_USERNAME', 'error');
-  }
-  
+  if (!user) return showToast("toast_login_first", "error");
+
   const token = makeTelegramToken();
-  
+  if (!token) return showToast("حدث خطأ في إنشاء كود الربط", "error");
+
   const { error } = await sb
-    .from('users')
+    .from("users")
     .update({ telegram_link_token: token })
-    .eq('pi_id', user.uid);
-  
-  if (error) return showToast(friendlyDbError(error), 'error');
-  
+    .eq("pi_id", user.uid);
+
+  if (error) return showToast(friendlyDbError(error), "error");
+
   openTelegramExternal(BOT_USERNAME, token);
 }
 // --- CONFIG ---
@@ -337,30 +345,30 @@ function openChatRoom(pid,otherId,pName,uName){ if(!user) return showToast('toas
 async function loadMessages(){ const {data}=await sb.from('messages').select('*').eq('product_id',activeChat.pid).order('created_at',{ascending:true}); if(data) data.forEach(m=>{ if((m.sender_pi_id==user.uid&&m.receiver_pi_id==activeChat.otherId)||(m.sender_pi_id==activeChat.otherId&&m.receiver_pi_id==user.uid)) renderMsg(m); }); }
 function renderMsg(m){ const div=document.createElement('div'); div.className=`bubble ${m.sender_pi_id===user.uid?'me':'other'}`; div.innerText=m.content; const c=el('msgContainer'); c.appendChild(div); c.scrollTop=c.scrollHeight; }
 async function sendMsg() {
-  const inp = el('msgInput');
-  
+  const inp = el("msgInput");
+
   if (!inp.value.trim()) return;
-  
+
   const text = inp.value.trim();
-  
+
   const { error } = await sb
-    .from('messages')
+    .from("messages")
     .insert({
       product_id: activeChat.pid,
       sender_pi_id: user.uid,
       receiver_pi_id: activeChat.otherId,
       content: text
     });
-  
+
   if (error) {
-    showToast('toast_send_fail', 'error');
+    showToast("toast_send_fail", "error");
   } else {
-    inp.value = '';
-    
-    fetch('/api/send-telegram', {
-      method: 'POST',
+    inp.value = "";
+
+    fetch("/api/send-telegram", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         receiver_pi_id: activeChat.otherId,
