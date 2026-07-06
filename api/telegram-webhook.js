@@ -36,8 +36,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    const safeToken = encodeURIComponent(token);
+
     const updateRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/users?telegram_link_token=eq.${encodeURIComponent(token)}`,
+      `${SUPABASE_URL}/rest/v1/users?telegram_link_token=eq.${safeToken}`,
       {
         method: "PATCH",
         headers: {
@@ -57,8 +59,22 @@ export default async function handler(req, res) {
 
     const resultText = await updateRes.text();
 
+    let rows = [];
+    try {
+      rows = JSON.parse(resultText || "[]");
+    } catch {
+      rows = [];
+    }
+
     if (!updateRes.ok) {
-      await sendTelegram(BOT_TOKEN, chatId, "خطأ في قاعدة البيانات أثناء الربط.");
+      console.error("Supabase error:", updateRes.status, resultText);
+
+      await sendTelegram(
+        BOT_TOKEN,
+        chatId,
+        `خطأ في قاعدة البيانات أثناء الربط. كود الخطأ: ${updateRes.status}`
+      );
+
       return res.status(200).json({
         ok: false,
         supabaseStatus: updateRes.status,
@@ -66,18 +82,35 @@ export default async function handler(req, res) {
       });
     }
 
-    const rows = JSON.parse(resultText || "[]");
+    if (!Array.isArray(rows) || rows.length === 0) {
+      await sendTelegram(
+        BOT_TOKEN,
+        chatId,
+        "كود الربط غير صالح أو تم استخدامه من قبل. ارجع للموقع واضغط ربط مرة أخرى."
+      );
 
-    if (!rows.length) {
-      await sendTelegram(BOT_TOKEN, chatId, "كود الربط غير صالح. ارجع للموقع واضغط ربط مرة أخرى.");
-      return res.status(200).json({ ok: true, linked: false });
+      return res.status(200).json({
+        ok: true,
+        linked: false,
+        reason: "token_not_found"
+      });
     }
 
-    await sendTelegram(BOT_TOKEN, chatId, "✅ تم ربط تيليجرام بنجاح. ارجع للموقع الآن.");
-    return res.status(200).json({ ok: true, linked: true });
+    await sendTelegram(
+      BOT_TOKEN,
+      chatId,
+      "✅ تم ربط تيليجرام بنجاح. ارجع للموقع الآن."
+    );
+
+    return res.status(200).json({
+      ok: true,
+      linked: true,
+      pi_id: rows[0]?.pi_id || null
+    });
 
   } catch (err) {
     console.error("WEBHOOK ERROR:", err);
+
     return res.status(200).json({
       ok: false,
       error: String(err?.message || err)
@@ -86,9 +119,18 @@ export default async function handler(req, res) {
 }
 
 async function sendTelegram(botToken, chatId, text) {
-  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text })
-  });
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text
+      })
+    });
+  } catch (err) {
+    console.error("Telegram send error:", err);
+  }
 }
