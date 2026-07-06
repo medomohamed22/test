@@ -33,6 +33,12 @@ export default async function handler(req, res) {
     const firstName = msg.from?.first_name || "";
     const text = String(msg.text || "").trim();
 
+    console.log("Telegram message:", {
+      chatId,
+      username,
+      text
+    });
+
     if (!chatId || !text) {
       return res.status(200).json({ ok: true });
     }
@@ -68,30 +74,38 @@ export default async function handler(req, res) {
         chatId,
         `👋 أهلاً بك في ${APP_NAME}.\n\nاستخدم /help لمعرفة الأوامر.`
       );
+
       return res.status(200).json({ ok: true });
     }
 
-    const token = text.split(" ").slice(1).join(" ").trim();
+    const token = extractStartToken(text);
 
     if (!token) {
       await sendTelegram(
         BOT_TOKEN,
         chatId,
-        `👋 أهلاً ${firstName || ""}\n\nلربط حسابك، افتح البوت من زر "ربط بوت تيليجرام" داخل ${APP_NAME}.`
+        `👋 أهلاً ${firstName || ""}\n\nلربط حسابك، افتح الموقع واضغط زر "ربط بوت تيليجرام" من صفحة حسابي.`
       );
-      return res.status(200).json({ ok: true });
+
+      return res.status(200).json({
+        ok: true,
+        linked: false,
+        reason: "missing_start_token"
+      });
     }
 
     if (!isValidLinkToken(token)) {
       await sendTelegram(
         BOT_TOKEN,
         chatId,
-        "❌ كود الربط غير صحيح.\nارجع للموقع واضغط ربط بوت تيليجرام مرة أخرى."
+        `❌ كود الربط غير صحيح.\n\nالكود الذي وصل للبوت:\n${token}\n\nارجع للموقع واضغط ربط بوت تيليجرام مرة أخرى.`
       );
+
       return res.status(200).json({
         ok: true,
         linked: false,
-        reason: "invalid_token_format"
+        reason: "invalid_token_format",
+        token
       });
     }
 
@@ -116,8 +130,29 @@ export default async function handler(req, res) {
   }
 }
 
+function extractStartToken(text) {
+  const parts = String(text || "").trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  return parts[1].trim();
+}
+
+/*
+  مهم:
+  خلي توكن الموقع يكون بالشكل:
+  tg_xxxxxxxxxxxxxxxxx
+
+  مثال دالة الموقع:
+  function makeTelegramToken(){
+    const rnd =
+      Math.random().toString(36).slice(2) +
+      Math.random().toString(36).slice(2) +
+      Date.now().toString(36);
+
+    return `tg_${rnd}`.slice(0, 60);
+  }
+*/
 function isValidLinkToken(token) {
-  return /^tg_[A-Za-z0-9_.:-]+_[A-Za-z0-9-]+/.test(token);
+  return /^tg_[A-Za-z0-9_-]{8,60}$/.test(token);
 }
 
 async function linkTelegramAccount({
@@ -128,26 +163,25 @@ async function linkTelegramAccount({
   username,
   token
 }) {
-  const safeToken = encodeURIComponent(token);
+  const url =
+    `${SUPABASE_URL}/rest/v1/users` +
+    `?telegram_link_token=eq.${encodeURIComponent(token)}`;
 
-  const updateRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/users?telegram_link_token=eq.${safeToken}`,
-    {
-      method: "PATCH",
-      headers: {
-        apikey: SERVICE_KEY,
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation"
-      },
-      body: JSON.stringify({
-        telegram_chat_id: chatId,
-        telegram_username: username,
-        telegram_linked_at: new Date().toISOString(),
-        telegram_link_token: null
-      })
-    }
-  );
+  const updateRes = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify({
+      telegram_chat_id: chatId,
+      telegram_username: username,
+      telegram_linked_at: new Date().toISOString(),
+      telegram_link_token: null
+    })
+  });
 
   const rows = await safeJson(updateRes);
 
@@ -172,7 +206,7 @@ async function linkTelegramAccount({
     await sendTelegram(
       BOT_TOKEN,
       chatId,
-      "❌ كود الربط غير صالح أو تم استخدامه من قبل.\nارجع للموقع واضغط ربط مرة أخرى."
+      "❌ كود الربط غير صالح أو تم استخدامه من قبل.\n\nارجع للموقع واضغط ربط بوت تيليجرام مرة أخرى."
     );
 
     return {
@@ -203,7 +237,9 @@ async function handleStatus({
   chatId
 }) {
   const url =
-    `${SUPABASE_URL}/rest/v1/users?telegram_chat_id=eq.${encodeURIComponent(chatId)}&select=pi_id,username,telegram_username,telegram_linked_at`;
+    `${SUPABASE_URL}/rest/v1/users` +
+    `?telegram_chat_id=eq.${encodeURIComponent(chatId)}` +
+    `&select=pi_id,username,telegram_username,telegram_linked_at`;
 
   const checkRes = await fetch(url, {
     headers: {
@@ -232,7 +268,7 @@ async function handleStatus({
   await sendTelegram(
     BOT_TOKEN,
     chatId,
-    "❌ حسابك غير مربوط حالياً.\nافتح Deal Way واضغط زر ربط بوت تيليجرام."
+    "❌ حسابك غير مربوط حالياً.\n\nافتح Deal Way واضغط زر ربط بوت تيليجرام."
   );
 
   return res.status(200).json({
