@@ -10,9 +10,7 @@ export default async function handler(req, res) {
     }
 
     const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SERVICE_KEY =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_SERVICE_KEY;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
     if (!SUPABASE_URL || !SERVICE_KEY || !BOT_TOKEN) {
@@ -20,7 +18,7 @@ export default async function handler(req, res) {
         ok: false,
         error: "Missing ENV",
         hasUrl: !!SUPABASE_URL,
-        hasServiceKey: !!SERVICE_KEY,
+        hasServiceRoleKey: !!SERVICE_KEY,
         hasBotToken: !!BOT_TOKEN
       });
     }
@@ -33,11 +31,7 @@ export default async function handler(req, res) {
     const firstName = msg.from?.first_name || "";
     const text = String(msg.text || "").trim();
 
-    console.log("Telegram message:", {
-      chatId,
-      username,
-      text
-    });
+    console.log("Telegram message:", { chatId, username, text });
 
     if (!chatId || !text) {
       return res.status(200).json({ ok: true });
@@ -136,21 +130,6 @@ function extractStartToken(text) {
   return parts[1].trim();
 }
 
-/*
-  مهم:
-  خلي توكن الموقع يكون بالشكل:
-  tg_xxxxxxxxxxxxxxxxx
-
-  مثال دالة الموقع:
-  function makeTelegramToken(){
-    const rnd =
-      Math.random().toString(36).slice(2) +
-      Math.random().toString(36).slice(2) +
-      Date.now().toString(36);
-
-    return `tg_${rnd}`.slice(0, 60);
-  }
-*/
 function isValidLinkToken(token) {
   return /^tg_[A-Za-z0-9_-]{8,60}$/.test(token);
 }
