@@ -211,14 +211,32 @@ html::-webkit-scrollbar,body::-webkit-scrollbar,*::-webkit-scrollbar{width:0!imp
 <div id="promoteModal" class="modal" onclick="if(event.target==this) closePromoteModal()"><div class="sheet"><div class="modal-header"><div class="modal-title"><i class="fa-solid fa-rocket" style="color:var(--accent)"></i><span data-i18n="promote_title">اختر خطة التمييز</span></div><button onclick="closePromoteModal()" class="close-btn"><i class="fa-solid fa-xmark"></i></button></div><div class="plan-container"><div class="plan-option" onclick="triggerPayment(1,3,1)"><div class="plan-info"><span class="plan-price" id="planPi1" data-usd="1">... π</span><span class="plan-days" data-i18n="plan_1">باقة عادية - صلاحيتها ٣ أيام</span><div class="plan-features"><span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_gold">شريط ذهبي</span></span><span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_priority">أولوية الظهور</span></span></div></div><i class="fa-solid fa-chevron-left" style="color:var(--primary);font-size:20px"></i></div><div class="plan-option" onclick="triggerPayment(5,7,5)"><div class="plan-info"><span class="plan-price" id="planPi5" data-usd="5">... π</span><span class="plan-days" data-i18n="plan_5">باقة مميزة - صلاحيتها أسبوع</span><div class="plan-features"><span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_gold">شريط ذهبي</span></span><span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_high_priority">أولوية عالية</span></span></div></div><i class="fa-solid fa-chevron-left" style="color:var(--primary);font-size:20px"></i></div><div class="plan-option" onclick="triggerPayment(10,14,10)" style="border-color:var(--accent)"><div class="plan-info"><span class="plan-price" id="planPi10" data-usd="10">... π</span><span class="plan-days" data-i18n="plan_10">باقة فوق المميز - صلاحيتها أسبوعين</span><div class="plan-features"><span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_gold">شريط ذهبي</span></span><span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_high_priority">أعلى من المميز العادي</span></span><span class="plan-feature"><i class="fa-solid fa-check"></i> <span data-i18n="feat_save">ظهور في القمة</span></span></div></div><i class="fa-solid fa-crown" style="color:var(--accent);font-size:22px"></i></div><div style="font-size:12px;color:var(--text-muted);text-align:center;line-height:1.7">يتم تحديث مقدار Pi تلقائياً حسب سعر PI/USDT اللحظي من OKX وقت الدفع.</div></div></div></div>
 <div id="chatModal" class="modal" style="z-index:2100" onclick="if(event.target==this) closeChat()"><div class="sheet" style="height:92vh;padding:20px"><div class="chat-header"><div class="chat-user-info" style="display:flex;align-items:center;gap:12px"><div class="inbox-avatar" id="chatAvatar">U</div><div class="chat-meta"><div id="chatTitle" style="font-weight:800;font-size:16px"></div><div id="chatPeer" style="font-size:13px"></div></div></div><button onclick="closeChat()" class="close-btn"><i class="fa-solid fa-xmark"></i></button></div><div id="msgContainer" class="chat-area"></div><div class="input-group" style="display:flex;gap:12px;align-items:center"><input id="msgInput" class="input-box" placeholder="" style="margin:0;flex:1;border-radius:var(--radius-full);padding:16px 24px" /><button class="btn btn-primary" style="width:56px;height:56px;border-radius:50%;padding:0;flex-shrink:0" onclick="sendMsg()"><i class="fa-solid fa-paper-plane"></i></button></div></div></div>
 <script>
-const BOT_USERNAME = "اسم_البوت_بدون_@";
+const BOT_USERNAME = "dealway_notify_bot";
 
 function makeTelegramToken() {
+  if (!user || !user.uid) return null;
   return "tg_" + user.uid + "_" + Math.random().toString(36).slice(2, 12);
+}
+
+function openTelegramExternal(botUsername, token) {
+  const cleanUsername = String(botUsername).replace('@', '').trim();
+  
+  const tgAppUrl = `tg://resolve?domain=${encodeURIComponent(cleanUsername)}&start=${encodeURIComponent(token)}`;
+  const tgWebUrl = `https://t.me/${encodeURIComponent(cleanUsername)}?start=${encodeURIComponent(token)}`;
+  
+  window.location.href = tgAppUrl;
+  
+  setTimeout(() => {
+    window.location.href = tgWebUrl;
+  }, 1200);
 }
 
 async function linkTelegramBot() {
   if (!user) return showToast('toast_login_first', 'error');
+  
+  if (!BOT_USERNAME || BOT_USERNAME === "dealway_notify_bot") {
+    return showToast('ضع اسم البوت الحقيقي في BOT_USERNAME', 'error');
+  }
   
   const token = makeTelegramToken();
   
@@ -229,7 +247,7 @@ async function linkTelegramBot() {
   
   if (error) return showToast(friendlyDbError(error), 'error');
   
-  window.open(`https://t.me/${BOT_USERNAME}?start=${token}`, "_blank");
+  openTelegramExternal(BOT_USERNAME, token);
 }
 // --- CONFIG ---
 const SUPABASE_URL = "https://xncapmzlwuisupkjlftb.supabase.co";
