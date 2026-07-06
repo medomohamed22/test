@@ -2,16 +2,21 @@ const APP_NAME = "Deal Way";
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "POST") {
-      return res.status(200).json({
-        ok: true,
-        message: "Telegram webhook alive"
-      });
-    }
-
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+    if (req.method !== "POST") {
+      return res.status(200).json({
+        ok: true,
+        message: "Telegram webhook alive",
+        hasUrl: !!SUPABASE_URL,
+        hasServiceRoleKey: !!SERVICE_KEY,
+        serviceRoleKeyStart: SERVICE_KEY ? SERVICE_KEY.slice(0, 12) : null,
+        serviceRoleKeyLength: SERVICE_KEY ? SERVICE_KEY.length : 0,
+        hasBotToken: !!BOT_TOKEN
+      });
+    }
 
     if (!SUPABASE_URL || !SERVICE_KEY || !BOT_TOKEN) {
       return res.status(200).json({
@@ -19,6 +24,8 @@ export default async function handler(req, res) {
         error: "Missing ENV",
         hasUrl: !!SUPABASE_URL,
         hasServiceRoleKey: !!SERVICE_KEY,
+        serviceRoleKeyStart: SERVICE_KEY ? SERVICE_KEY.slice(0, 12) : null,
+        serviceRoleKeyLength: SERVICE_KEY ? SERVICE_KEY.length : 0,
         hasBotToken: !!BOT_TOKEN
       });
     }
@@ -32,6 +39,11 @@ export default async function handler(req, res) {
     const text = String(msg.text || "").trim();
 
     console.log("Telegram message:", { chatId, username, text });
+    console.log("Supabase ENV:", {
+      url: SUPABASE_URL,
+      keyStart: SERVICE_KEY.slice(0, 12),
+      keyLength: SERVICE_KEY.length
+    });
 
     if (!chatId || !text) {
       return res.status(200).json({ ok: true });
@@ -113,7 +125,6 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json(linked);
-
   } catch (err) {
     console.error("WEBHOOK ERROR:", err);
 
@@ -229,6 +240,23 @@ async function handleStatus({
 
   const rows = await safeJson(checkRes);
 
+  if (!checkRes.ok) {
+    console.error("Supabase status error:", checkRes.status, rows);
+
+    await sendTelegram(
+      BOT_TOKEN,
+      chatId,
+      `❌ حدث خطأ أثناء فحص حالة الربط.\nكود الخطأ: ${checkRes.status}`
+    );
+
+    return res.status(200).json({
+      ok: false,
+      linked: false,
+      supabaseStatus: checkRes.status,
+      supabaseError: rows
+    });
+  }
+
   if (Array.isArray(rows) && rows.length > 0) {
     const user = rows[0];
 
@@ -285,15 +313,18 @@ async function handleUnlink({
   const rows = await safeJson(unlinkRes);
 
   if (!unlinkRes.ok) {
+    console.error("Supabase unlink error:", unlinkRes.status, rows);
+
     await sendTelegram(
       BOT_TOKEN,
       chatId,
-      "❌ حدث خطأ أثناء إلغاء الربط."
+      `❌ حدث خطأ أثناء إلغاء الربط.\nكود الخطأ: ${unlinkRes.status}`
     );
 
     return res.status(200).json({
       ok: false,
       unlinked: false,
+      supabaseStatus: unlinkRes.status,
       error: rows
     });
   }
