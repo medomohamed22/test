@@ -1,11 +1,18 @@
+const APP_NAME = "Deal Way";
+
 export default async function handler(req, res) {
   try {
     if (req.method !== "POST") {
-      return res.status(200).json({ ok: true, message: "webhook alive" });
+      return res.status(200).json({
+        ok: true,
+        message: "Telegram webhook alive"
+      });
     }
 
     const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const SERVICE_KEY =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY;
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
     if (!SUPABASE_URL || !SERVICE_KEY || !BOT_TOKEN) {
@@ -19,94 +26,85 @@ export default async function handler(req, res) {
     }
 
     const msg = req.body?.message;
-    if (!msg?.text) return res.status(200).json({ ok: true });
+    if (!msg) return res.status(200).json({ ok: true });
 
-    const chatId = String(msg.chat.id);
+    const chatId = String(msg.chat?.id || "");
     const username = msg.from?.username || null;
-    const text = msg.text.trim();
+    const firstName = msg.from?.first_name || "";
+    const text = String(msg.text || "").trim();
 
-    if (!text.startsWith("/start")) {
+    if (!chatId || !text) {
       return res.status(200).json({ ok: true });
     }
 
-    const token = text.split(" ")[1];
-
-    if (!token) {
-      await sendTelegram(BOT_TOKEN, chatId, "افتح البوت من زر الربط داخل Deal Way.");
+    if (text === "/help") {
+      await sendTelegram(BOT_TOKEN, chatId, helpMessage());
       return res.status(200).json({ ok: true });
     }
 
-    const safeToken = encodeURIComponent(token);
-
-    const updateRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/users?telegram_link_token=eq.${safeToken}`,
-      {
-        method: "PATCH",
-        headers: {
-          apikey: SERVICE_KEY,
-          Authorization: `Bearer ${SERVICE_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation"
-        },
-        body: JSON.stringify({
-          telegram_chat_id: chatId,
-          telegram_username: username,
-          telegram_linked_at: new Date().toISOString(),
-          telegram_link_token: null
-        })
-      }
-    );
-
-    const resultText = await updateRes.text();
-
-    let rows = [];
-    try {
-      rows = JSON.parse(resultText || "[]");
-    } catch {
-      rows = [];
-    }
-
-    if (!updateRes.ok) {
-      console.error("Supabase error:", updateRes.status, resultText);
-
-      await sendTelegram(
+    if (text === "/status") {
+      return await handleStatus({
+        res,
+        SUPABASE_URL,
+        SERVICE_KEY,
         BOT_TOKEN,
-        chatId,
-        `خطأ في قاعدة البيانات أثناء الربط. كود الخطأ: ${updateRes.status}`
-      );
-
-      return res.status(200).json({
-        ok: false,
-        supabaseStatus: updateRes.status,
-        supabaseError: resultText
+        chatId
       });
     }
 
-    if (!Array.isArray(rows) || rows.length === 0) {
+    if (text === "/unlink") {
+      return await handleUnlink({
+        res,
+        SUPABASE_URL,
+        SERVICE_KEY,
+        BOT_TOKEN,
+        chatId
+      });
+    }
+
+    if (!text.startsWith("/start")) {
       await sendTelegram(
         BOT_TOKEN,
         chatId,
-        "كود الربط غير صالح أو تم استخدامه من قبل. ارجع للموقع واضغط ربط مرة أخرى."
+        `👋 أهلاً بك في ${APP_NAME}.\n\nاستخدم /help لمعرفة الأوامر.`
       );
+      return res.status(200).json({ ok: true });
+    }
 
+    const token = text.split(" ").slice(1).join(" ").trim();
+
+    if (!token) {
+      await sendTelegram(
+        BOT_TOKEN,
+        chatId,
+        `👋 أهلاً ${firstName || ""}\n\nلربط حسابك، افتح البوت من زر "ربط بوت تيليجرام" داخل ${APP_NAME}.`
+      );
+      return res.status(200).json({ ok: true });
+    }
+
+    if (!isValidLinkToken(token)) {
+      await sendTelegram(
+        BOT_TOKEN,
+        chatId,
+        "❌ كود الربط غير صحيح.\nارجع للموقع واضغط ربط بوت تيليجرام مرة أخرى."
+      );
       return res.status(200).json({
         ok: true,
         linked: false,
-        reason: "token_not_found"
+        reason: "invalid_token_format"
       });
     }
 
-    await sendTelegram(
+    const linked = await linkTelegramAccount({
+      SUPABASE_URL,
+      SERVICE_KEY,
       BOT_TOKEN,
       chatId,
-      "✅ تم ربط تيليجرام بنجاح. ارجع للموقع الآن."
-    );
-
-    return res.status(200).json({
-      ok: true,
-      linked: true,
-      pi_id: rows[0]?.pi_id || null
+      username,
+      token
     });
+
+    return res.status(200).json(linked);
 
   } catch (err) {
     console.error("WEBHOOK ERROR:", err);
@@ -118,19 +116,252 @@ export default async function handler(req, res) {
   }
 }
 
-async function sendTelegram(botToken, chatId, text) {
-  try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: "POST",
+function isValidLinkToken(token) {
+  return /^tg_[A-Za-z0-9_.:-]+_[A-Za-z0-9-]+/.test(token);
+}
+
+async function linkTelegramAccount({
+  SUPABASE_URL,
+  SERVICE_KEY,
+  BOT_TOKEN,
+  chatId,
+  username,
+  token
+}) {
+  const safeToken = encodeURIComponent(token);
+
+  const updateRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/users?telegram_link_token=eq.${safeToken}`,
+    {
+      method: "PATCH",
       headers: {
-        "Content-Type": "application/json"
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation"
       },
       body: JSON.stringify({
-        chat_id: chatId,
-        text
+        telegram_chat_id: chatId,
+        telegram_username: username,
+        telegram_linked_at: new Date().toISOString(),
+        telegram_link_token: null
       })
+    }
+  );
+
+  const rows = await safeJson(updateRes);
+
+  if (!updateRes.ok) {
+    console.error("Supabase link error:", updateRes.status, rows);
+
+    await sendTelegram(
+      BOT_TOKEN,
+      chatId,
+      `❌ حدث خطأ أثناء الربط.\nكود الخطأ: ${updateRes.status}`
+    );
+
+    return {
+      ok: false,
+      linked: false,
+      supabaseStatus: updateRes.status,
+      supabaseError: rows
+    };
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    await sendTelegram(
+      BOT_TOKEN,
+      chatId,
+      "❌ كود الربط غير صالح أو تم استخدامه من قبل.\nارجع للموقع واضغط ربط مرة أخرى."
+    );
+
+    return {
+      ok: true,
+      linked: false,
+      reason: "token_not_found"
+    };
+  }
+
+  await sendTelegram(
+    BOT_TOKEN,
+    chatId,
+    `✅ تم ربط تيليجرام بحسابك في ${APP_NAME} بنجاح.\n\nستصلك الآن إشعارات الرسائل الجديدة هنا.`
+  );
+
+  return {
+    ok: true,
+    linked: true,
+    pi_id: rows[0]?.pi_id || null
+  };
+}
+
+async function handleStatus({
+  res,
+  SUPABASE_URL,
+  SERVICE_KEY,
+  BOT_TOKEN,
+  chatId
+}) {
+  const url =
+    `${SUPABASE_URL}/rest/v1/users?telegram_chat_id=eq.${encodeURIComponent(chatId)}&select=pi_id,username,telegram_username,telegram_linked_at`;
+
+  const checkRes = await fetch(url, {
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`
+    }
+  });
+
+  const rows = await safeJson(checkRes);
+
+  if (Array.isArray(rows) && rows.length > 0) {
+    const user = rows[0];
+
+    await sendTelegram(
+      BOT_TOKEN,
+      chatId,
+      `✅ حسابك مربوط بالفعل.\n\n👤 المستخدم: ${user.username || "غير محدد"}\n🆔 Pi ID: ${user.pi_id || "غير محدد"}`
+    );
+
+    return res.status(200).json({
+      ok: true,
+      linked: true
     });
+  }
+
+  await sendTelegram(
+    BOT_TOKEN,
+    chatId,
+    "❌ حسابك غير مربوط حالياً.\nافتح Deal Way واضغط زر ربط بوت تيليجرام."
+  );
+
+  return res.status(200).json({
+    ok: true,
+    linked: false
+  });
+}
+
+async function handleUnlink({
+  res,
+  SUPABASE_URL,
+  SERVICE_KEY,
+  BOT_TOKEN,
+  chatId
+}) {
+  const unlinkRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/users?telegram_chat_id=eq.${encodeURIComponent(chatId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({
+        telegram_chat_id: null,
+        telegram_username: null,
+        telegram_linked_at: null,
+        telegram_link_token: null
+      })
+    }
+  );
+
+  const rows = await safeJson(unlinkRes);
+
+  if (!unlinkRes.ok) {
+    await sendTelegram(
+      BOT_TOKEN,
+      chatId,
+      "❌ حدث خطأ أثناء إلغاء الربط."
+    );
+
+    return res.status(200).json({
+      ok: false,
+      unlinked: false,
+      error: rows
+    });
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    await sendTelegram(
+      BOT_TOKEN,
+      chatId,
+      "حسابك غير مربوط بالفعل."
+    );
+
+    return res.status(200).json({
+      ok: true,
+      unlinked: false
+    });
+  }
+
+  await sendTelegram(
+    BOT_TOKEN,
+    chatId,
+    "✅ تم إلغاء ربط تيليجرام بنجاح."
+  );
+
+  return res.status(200).json({
+    ok: true,
+    unlinked: true
+  });
+}
+
+function helpMessage() {
+  return `🤖 أوامر بوت Deal Way:
+
+/start
+بدء الربط أو تشغيل البوت.
+
+/status
+معرفة هل حسابك مربوط أم لا.
+
+/unlink
+إلغاء ربط تيليجرام بحسابك.
+
+/help
+عرض هذه الرسالة.
+
+لربط حسابك:
+افتح Deal Way ← حسابي ← ربط بوت تيليجرام.`;
+}
+
+async function sendTelegram(botToken, chatId, text) {
+  try {
+    const tgRes = await fetch(
+      `https://api.telegram.org/bot${botToken}/sendMessage`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text
+        })
+      }
+    );
+
+    const result = await tgRes.json().catch(() => null);
+
+    if (!tgRes.ok) {
+      console.error("Telegram send failed:", tgRes.status, result);
+    }
+
+    return result;
   } catch (err) {
     console.error("Telegram send error:", err);
+    return null;
+  }
+}
+
+async function safeJson(response) {
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text || "[]");
+  } catch {
+    return text;
   }
 }
