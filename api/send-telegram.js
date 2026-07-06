@@ -2,8 +2,7 @@ const { createClient } = require("@supabase/supabase-js");
 
 const sb = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 module.exports = async function handler(req, res) {
@@ -33,10 +32,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    if (
-      !process.env.SUPABASE_SERVICE_ROLE_KEY &&
-      !process.env.SUPABASE_SERVICE_KEY
-    ) {
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return res.status(500).json({
         ok: false,
         error: "SUPABASE_SERVICE_ROLE_KEY missing"
@@ -50,7 +46,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // البحث عن المستخدم
     const { data: receiver, error } = await sb
       .from("users")
       .select("telegram_chat_id")
@@ -66,7 +61,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // المستخدم لم يربط تيليجرام
     if (!receiver?.telegram_chat_id) {
       return res.status(200).json({
         ok: false,
@@ -74,7 +68,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // إرسال الرسالة
     const tgRes = await fetch(
       `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
       {
@@ -84,7 +77,9 @@ module.exports = async function handler(req, res) {
         },
         body: JSON.stringify({
           chat_id: String(receiver.telegram_chat_id),
-          text: String(message)
+          text: String(message),
+          parse_mode: "HTML",
+          disable_web_page_preview: false
         })
       }
     );
