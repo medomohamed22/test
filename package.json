@@ -1,5 +1,6 @@
 {
+  "private": true,
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4"
+    "@supabase/supabase-js": "2.45.4"
   }
 }
