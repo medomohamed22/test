@@ -2,6 +2,11 @@
   "functions": {
     "api/*.js": { "maxDuration": 30 }
   },
+  "rewrites": [
+    { "source": "/api/approve", "destination": "/api/payments?action=approve" },
+    { "source": "/api/complete", "destination": "/api/payments?action=complete" },
+    { "source": "/api/health", "destination": "/api/session?health=1" }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
