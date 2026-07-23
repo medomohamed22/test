@@ -154,7 +154,7 @@ async function linkTelegramAccount({
   token
 }) {
   const url =
-    `${SUPABASE_URL}/rest/v1/users` +
+    `${SUPABASE_URL}/rest/v1/app_users` +
     `?telegram_link_token=eq.${encodeURIComponent(token)}`;
 
   const updateRes = await fetch(url, {
@@ -227,7 +227,7 @@ async function handleStatus({
   chatId
 }) {
   const url =
-    `${SUPABASE_URL}/rest/v1/users` +
+    `${SUPABASE_URL}/rest/v1/app_users` +
     `?telegram_chat_id=eq.${encodeURIComponent(chatId)}` +
     `&select=pi_id,username,telegram_username,telegram_linked_at`;
 
@@ -292,7 +292,7 @@ async function handleUnlink({
   chatId
 }) {
   const unlinkRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/users?telegram_chat_id=eq.${encodeURIComponent(chatId)}`,
+    `${SUPABASE_URL}/rest/v1/app_users?telegram_chat_id=eq.${encodeURIComponent(chatId)}`,
     {
       method: "PATCH",
       headers: {

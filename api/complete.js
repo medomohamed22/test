@@ -1,8 +1,10 @@
 const {createClient}=require('@supabase/supabase-js');
+const {verifyPiUser}=require('./lib/security');
 const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}});
 const PI='https://api.minepi.com/v2';
 const PLANS={1:{usd:1,days:3},2:{usd:5,days:7},3:{usd:10,days:14}};
 module.exports=async(req,res)=>{if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});try{
+ const caller=await verifyPiUser(req);
  const b=typeof req.body==='string'?JSON.parse(req.body):req.body||{};if(!b.paymentId||!b.txid)throw new Error('paymentId and txid required');
  const complete=await fetch(`${PI}/payments/${encodeURIComponent(b.paymentId)}/complete`,{method:'POST',headers:{Authorization:`Key ${process.env.PI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({txid:b.txid})});
  if(!complete.ok)throw new Error(`Pi completion rejected: ${await complete.text()}`);
@@ -10,7 +12,7 @@ module.exports=async(req,res)=>{if(req.method!=='POST')return res.status(405).js
  if(!p.status?.developer_completed||!p.status?.transaction_verified||p.status?.cancelled||p.status?.user_cancelled)throw new Error('Payment is not fully verified');
  if(p.transaction?.txid!==b.txid)throw new Error('Transaction mismatch');
  const m=typeof p.metadata==='string'?JSON.parse(p.metadata):p.metadata||{};const productId=Number(m.productId||m.product_id);const tier=Number(m.level||m.tier);const plan=PLANS[tier];if(!productId||!plan)throw new Error('Invalid payment metadata');
- const {data:product}=await sb.from('products').select('id,seller_pi_id,promoted_until,status').eq('id',productId).single();if(!product||product.seller_pi_id!==p.user_uid)throw new Error('Payment owner mismatch');if(product.status!=='approved')throw new Error('Only approved ads can be promoted');
+ const {data:product}=await sb.from('products').select('id,seller_pi_id,promoted_until,status').eq('id',productId).single();if(p.user_uid!==caller.uid)throw new Error('Authenticated user mismatch');if(!product||product.seller_pi_id!==p.user_uid)throw new Error('Payment owner mismatch');if(product.status!=='approved')throw new Error('Only approved ads can be promoted');
  const okx=await fetch('https://www.okx.com/api/v5/market/ticker?instId=PI-USDT').then(x=>x.json());const piUsd=Number(okx.data?.[0]?.last);if(!piUsd)throw new Error('Cannot verify PI price');const expected=plan.usd/piUsd;const paid=Number(p.amount);if(Math.abs(paid-expected)/expected>0.03)throw new Error('Paid amount does not match current plan price');
  let expiry=new Date();if(product.promoted_until&&new Date(product.promoted_until)>expiry)expiry=new Date(product.promoted_until);expiry.setUTCDate(expiry.getUTCDate()+plan.days);
  const {error:pe}=await sb.from('payments').insert({payment_id:b.paymentId,user_id:p.user_uid,product_id:productId,txid:b.txid,amount_pi:paid,amount_usd:plan.usd,pi_usd_price:piUsd,tier,days:plan.days,status:'completed',raw_payment:p,completed_at:new Date().toISOString()});if(pe&&pe.code!=='23505')throw pe;

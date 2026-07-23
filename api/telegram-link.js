@@ -1,0 +1,5 @@
+const crypto=require('crypto');
+const {createClient}=require('@supabase/supabase-js');
+const {verifyPiUser}=require('./lib/security');
+const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}});
+module.exports=async(req,res)=>{try{const u=await verifyPiUser(req);if(req.method==='GET'){const {data,error}=await sb.from('app_users').select('telegram_chat_id,telegram_username').eq('pi_uid',u.uid).single();if(error)throw error;return res.json({linked:!!data.telegram_chat_id,username:data.telegram_username||null});}if(req.method==='POST'){const token=crypto.randomBytes(24).toString('hex');const exp=new Date(Date.now()+15*60*1000).toISOString();const {error}=await sb.from('app_users').update({telegram_link_token:token,telegram_link_token_expires_at:exp}).eq('pi_uid',u.uid);if(error)throw error;return res.json({token,expiresAt:exp});}return res.status(405).json({error:'Method not allowed'});}catch(e){return res.status(400).json({error:e.message});}};
