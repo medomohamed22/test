@@ -1,94 +1,14 @@
+'use strict';
+const crypto = require('node:crypto');
 const { createClient } = require('@supabase/supabase-js');
-function cleanText(value, min, max, field) {
-  const s = String(value || '').normalize('NFKC').trim();
-  if (s.length < min || s.length > max) throw new Error(`${field} length is invalid`);
-  if (/<[^>]*>|javascript:|data:text\/html|on\w+\s*=/i.test(s)) throw new Error(`${field} contains forbidden content`);
-  return s.replace(/[\u0000-\u001F\u007F]/g, ' ');
-}
-
-function imageMime(buffer) {
-  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
-  if (buffer.subarray(0,3).equals(Buffer.from([0xff,0xd8,0xff]))) return 'image/jpeg';
-  if (buffer.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))) return 'image/png';
-  if (buffer.subarray(0,4).toString() === 'RIFF' && buffer.subarray(8,12).toString() === 'WEBP') return 'image/webp';
-  return null;
-}
-
-async function verifyPiUser(req) {
-  const authorization = String(req.headers.authorization || '');
-  const match = authorization.match(/^Bearer\s+([^\s]+)$/i);
-  if (!match) {
-    const err = new Error('Missing Pi access token');
-    err.statusCode = 401;
-    err.code = 'PI_TOKEN_MISSING';
-    throw err;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const response = await fetch('https://api.minepi.com/v2/me', {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${match[1]}`, Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body.uid || !body.username) {
-      const err = new Error(body.error || body.message || 'Invalid Pi access token');
-      err.statusCode = 401;
-      err.code = 'PI_TOKEN_INVALID';
-      throw err;
-    }
-    return { uid: String(body.uid), username: String(body.username) };
-  } catch (e) {
-    if (e.name === 'AbortError') {
-      const err = new Error('Pi authentication service timed out');
-      err.statusCode = 503;
-      err.code = 'PI_AUTH_TIMEOUT';
-      throw err;
-    }
-    throw e;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {auth:{persistSession:false}});
-function cors(res){res.setHeader('Access-Control-Allow-Origin',process.env.APP_ORIGIN||'https://deallway.vercel.app');res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,DELETE,OPTIONS');}
-function body(req){return typeof req.body==='string'?JSON.parse(req.body):req.body||{};}
-module.exports=async(req,res)=>{cors(res);if(req.method==='OPTIONS')return res.status(204).end();
- try{
-  const user=await verifyPiUser(req);
-  await sb.from('app_users').upsert({pi_uid:user.uid,username:user.username,updated_at:new Date().toISOString()});
-  if(req.method==='GET'){
-   const {data,error}=await sb.from('products').select('*').eq('seller_pi_id',user.uid).order('created_at',{ascending:false});if(error)throw error;return res.json({products:data});
-  }
-  const b=body(req);
-  if(req.method==='POST'){
-   const name=cleanText(b.name,2,120,'name'), description=cleanText(b.description,10,3000,'description');
-   const priceUsd=Number(b.priceUsd); if(!Number.isFinite(priceUsd)||priceUsd<=0||priceUsd>10000000)throw new Error('Invalid USD price');
-   if(!Array.isArray(b.images)||b.images.length<1||b.images.length>3)throw new Error('1 to 3 images are required');
-   const urls=[];
-   for(let i=0;i<b.images.length;i++){
-    const raw=String(b.images[i].data||'').replace(/^data:[^;]+;base64,/,''); const buf=Buffer.from(raw,'base64');
-    if(buf.length<100||buf.length>2*1024*1024)throw new Error('Each image must be 2 MB or less');
-    const mime=imageMime(buf); if(!mime)throw new Error('Only real JPEG, PNG, or WEBP images are allowed');
-    const ext=mime==='image/jpeg'?'jpg':mime==='image/png'?'png':'webp'; const path=`${user.uid}/${crypto.randomUUID()}.${ext}`;
-    const {error}=await sb.storage.from('product-images').upload(path,buf,{contentType:mime,upsert:false});if(error)throw error;
-    urls.push(sb.storage.from('product-images').getPublicUrl(path).data.publicUrl);
-   }
-   const row={seller_pi_id:user.uid,seller_username:user.username,name,description,price_usd:priceUsd,category:cleanText(b.category,1,80,'category'),country:cleanText(b.country,2,80,'country'),location:cleanText(b.location,1,120,'location'),images:urls,status:'pending'};
-   const {data,error}=await sb.from('products').insert(row).select().single();if(error)throw error;return res.status(201).json({product:data});
-  }
-  const id=Number(b.id);if(!Number.isInteger(id)||id<1)throw new Error('Invalid product id');
-  const {data:owned}=await sb.from('products').select('id,status').eq('id',id).eq('seller_pi_id',user.uid).maybeSingle();if(!owned)return res.status(404).json({error:'Not found'});
-  if(req.method==='DELETE'){const {error}=await sb.from('products').delete().eq('id',id).eq('seller_pi_id',user.uid);if(error)throw error;return res.json({success:true});}
-  if(req.method==='PATCH'){
-   const patch={status:'pending',reviewed_at:null,reviewed_by:null,rejection_reason:null};
-   if(b.name!==undefined)patch.name=cleanText(b.name,2,120,'name');if(b.description!==undefined)patch.description=cleanText(b.description,10,3000,'description');
-   if(b.priceUsd!==undefined){const p=Number(b.priceUsd);if(!Number.isFinite(p)||p<=0)throw new Error('Invalid price');patch.price_usd=p;}
-   const {data,error}=await sb.from('products').update(patch).eq('id',id).eq('seller_pi_id',user.uid).select().single();if(error)throw error;return res.json({product:data});
-  }
-  return res.status(405).json({error:'Method not allowed'});
- }catch(e){console.error(e);return res.status(400).json({error:e.message});}
-};
+const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+const BUCKET='product-images';
+function fail(message,code,status=400){const e=new Error(message);e.code=code;e.statusCode=status;throw e;}
+function cleanText(value,min,max,field){const s=String(value??'').normalize('NFKC').trim().replace(/[\u0000-\u001F\u007F]/g,' ');if(s.length<min)fail(`${field} is too short`,`${field.toUpperCase()}_TOO_SHORT`);if(s.length>max)fail(`${field} is too long`,`${field.toUpperCase()}_TOO_LONG`);if(/<[^>]*>|javascript:|data:text\/html|on\w+\s*=/i.test(s))fail(`${field} contains forbidden content`,`${field.toUpperCase()}_UNSAFE`);return s;}
+function imageMime(b){if(!Buffer.isBuffer(b)||b.length<12)return null;if(b.subarray(0,3).equals(Buffer.from([255,216,255])))return'image/jpeg';if(b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return'image/png';if(b.subarray(0,4).toString()==='RIFF'&&b.subarray(8,12).toString()==='WEBP')return'image/webp';return null;}
+async function verifyPiUser(req){const m=String(req.headers.authorization||'').match(/^Bearer\s+([^\s]+)$/i);if(!m)fail('Missing Pi access token','PI_TOKEN_MISSING',401);const c=new AbortController(),t=setTimeout(()=>c.abort(),8000);try{const r=await fetch('https://api.minepi.com/v2/me',{headers:{Authorization:`Bearer ${m[1]}`,Accept:'application/json'},signal:c.signal});const j=await r.json().catch(()=>({}));if(!r.ok||!j.uid||!j.username)fail('Invalid Pi access token','PI_TOKEN_INVALID',401);return{uid:String(j.uid),username:String(j.username)}}finally{clearTimeout(t)}}
+function parse(req){return typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});}
+function storagePath(url){try{const u=new URL(url);const marker=`/storage/v1/object/public/${BUCKET}/`;const i=u.pathname.indexOf(marker);return i<0?null:decodeURIComponent(u.pathname.slice(i+marker.length));}catch{return null}}
+async function removeImages(urls){const paths=(urls||[]).map(storagePath).filter(Boolean);if(paths.length){const {error}=await sb.storage.from(BUCKET).remove(paths);if(error)console.error('storage remove:',error.message)}}
+async function uploadImages(images,userId){if(!Array.isArray(images)||images.length<1)fail('Upload at least one image','IMAGES_REQUIRED');if(images.length>3)fail('Maximum 3 images','IMAGES_MAX');const urls=[],uploaded=[];try{for(const item of images){const raw=String(item?.data||'').replace(/^data:[^;]+;base64,/,'');if(!raw)fail('Invalid image','IMAGE_INVALID');const buf=Buffer.from(raw,'base64');if(buf.length<100)fail('Invalid image','IMAGE_INVALID');if(buf.length>2*1024*1024)fail('Each image must be 2 MB or less','IMAGE_TOO_LARGE');const mime=imageMime(buf);if(!mime)fail('Only JPEG, PNG, or WEBP images are allowed','IMAGE_TYPE');const ext=mime==='image/jpeg'?'jpg':mime==='image/png'?'png':'webp';const path=`${userId}/${crypto.randomUUID()}.${ext}`;const {error}=await sb.storage.from(BUCKET).upload(path,buf,{contentType:mime,upsert:false,cacheControl:'31536000'});if(error)throw error;uploaded.push(path);urls.push(sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl)}return urls}catch(e){if(uploaded.length)await sb.storage.from(BUCKET).remove(uploaded);throw e}}
+module.exports=async(req,res)=>{res.setHeader('Cache-Control','no-store');if(req.method==='OPTIONS')return res.status(204).end();try{const user=await verifyPiUser(req);await sb.from('app_users').upsert({pi_uid:user.uid,username:user.username,updated_at:new Date().toISOString()},{onConflict:'pi_uid'});if(req.method==='GET'){const {data,error}=await sb.from('products').select('*').eq('seller_pi_id',user.uid).order('created_at',{ascending:false});if(error)throw error;return res.json({products:data||[]})}const b=parse(req),id=Number(b.id);if(req.method==='POST'){const name=cleanText(b.name,2,120,'name'),description=cleanText(b.description,20,3000,'description');const price=Number(b.priceUsd);if(!Number.isFinite(price)||price<=0||price>10000000)fail('Enter a valid USD price','PRICE_INVALID');const category=cleanText(b.category,1,80,'category'),country=cleanText(b.country,2,80,'country'),location=cleanText(b.location,1,120,'location');const images=await uploadImages(b.images,user.uid);const {data,error}=await sb.from('products').insert({seller_pi_id:user.uid,seller_username:user.username,name,description,price_usd:price,category,country,location,images,status:'pending'}).select().single();if(error){await removeImages(images);throw error}return res.status(201).json({product:data})}if(!Number.isInteger(id)||id<1)fail('Invalid product id','PRODUCT_ID_INVALID');const {data:owned,error:ownedErr}=await sb.from('products').select('*').eq('id',id).eq('seller_pi_id',user.uid).maybeSingle();if(ownedErr)throw ownedErr;if(!owned)fail('Product not found','PRODUCT_NOT_FOUND',404);if(req.method==='DELETE'){await removeImages(owned.images);const {error}=await sb.from('products').delete().eq('id',id).eq('seller_pi_id',user.uid);if(error)throw error;return res.json({success:true})}if(req.method==='PATCH'){const patch={status:'pending',reviewed_at:null,reviewed_by:null,rejection_reason:null,updated_at:new Date().toISOString()};if(b.name!==undefined)patch.name=cleanText(b.name,2,120,'name');if(b.description!==undefined)patch.description=cleanText(b.description,20,3000,'description');if(b.priceUsd!==undefined){const p=Number(b.priceUsd);if(!Number.isFinite(p)||p<=0||p>10000000)fail('Enter a valid USD price','PRICE_INVALID');patch.price_usd=p}if(b.category!==undefined)patch.category=cleanText(b.category,1,80,'category');if(b.country!==undefined)patch.country=cleanText(b.country,2,80,'country');if(b.location!==undefined)patch.location=cleanText(b.location,1,120,'location');let newImages=null;if(Array.isArray(b.images)){newImages=await uploadImages(b.images,user.uid);patch.images=newImages}else if(!owned.images?.length)fail('Upload at least one image before resubmitting','IMAGES_REQUIRED');const {data,error}=await sb.from('products').update(patch).eq('id',id).eq('seller_pi_id',user.uid).select().single();if(error){if(newImages)await removeImages(newImages);throw error}if(newImages)await removeImages(owned.images);return res.json({product:data})}return res.status(405).json({error:'Method not allowed',code:'METHOD_NOT_ALLOWED'})}catch(e){console.error('products:',e);return res.status(e.statusCode||400).json({error:e.message||'Request failed',code:e.code||'REQUEST_FAILED'})}};

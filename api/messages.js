@@ -75,6 +75,8 @@ module.exports = async (req,res) => {
     if(!p||p.status!=='approved') throw new Error('Product unavailable');
     if(receiver===u.uid || (p.seller_pi_id!==receiver && p.seller_pi_id!==u.uid)) throw new Error('Invalid chat target');
     const {data,error}=await sb.from('messages').insert({product_id:productId,sender_pi_id:u.uid,receiver_pi_id:receiver,content}).select().single();if(error)throw error;
+    const {data:target}=await sb.from('app_users').select('telegram_chat_id').eq('pi_uid',receiver).maybeSingle();
+    if(target?.telegram_chat_id&&process.env.TELEGRAM_BOT_TOKEN){fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:target.telegram_chat_id,text:`رسالة جديدة على ${p.name} من ${u.username}:\n${content.slice(0,400)}`})}).catch(e=>console.error('telegram notify:',e.message));}
     return res.status(201).json({message:data});
   }
   if(req.method==='PATCH') {

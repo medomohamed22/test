@@ -1,58 +1,8 @@
+'use strict';
 const {createClient}=require('@supabase/supabase-js');
-function cleanText(value, min, max, field) {
-  const s = String(value || '').normalize('NFKC').trim();
-  if (s.length < min || s.length > max) throw new Error(`${field} length is invalid`);
-  if (/<[^>]*>|javascript:|data:text\/html|on\w+\s*=/i.test(s)) throw new Error(`${field} contains forbidden content`);
-  return s.replace(/[\u0000-\u001F\u007F]/g, ' ');
-}
-
-function imageMime(buffer) {
-  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
-  if (buffer.subarray(0,3).equals(Buffer.from([0xff,0xd8,0xff]))) return 'image/jpeg';
-  if (buffer.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))) return 'image/png';
-  if (buffer.subarray(0,4).toString() === 'RIFF' && buffer.subarray(8,12).toString() === 'WEBP') return 'image/webp';
-  return null;
-}
-
-async function verifyPiUser(req) {
-  const authorization = String(req.headers.authorization || '');
-  const match = authorization.match(/^Bearer\s+([^\s]+)$/i);
-  if (!match) {
-    const err = new Error('Missing Pi access token');
-    err.statusCode = 401;
-    err.code = 'PI_TOKEN_MISSING';
-    throw err;
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const response = await fetch('https://api.minepi.com/v2/me', {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${match[1]}`, Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body.uid || !body.username) {
-      const err = new Error(body.error || body.message || 'Invalid Pi access token');
-      err.statusCode = 401;
-      err.code = 'PI_TOKEN_INVALID';
-      throw err;
-    }
-    return { uid: String(body.uid), username: String(body.username) };
-  } catch (e) {
-    if (e.name === 'AbortError') {
-      const err = new Error('Pi authentication service timed out');
-      err.statusCode = 503;
-      err.code = 'PI_AUTH_TIMEOUT';
-      throw err;
-    }
-    throw e;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}});
-async function admin(req){const u=await verifyPiUser(req);const {data}=await sb.from('app_users').select('role').eq('pi_uid',u.uid).single();if(data?.role!=='admin')throw new Error('Forbidden');return u;}
-module.exports=async(req,res)=>{try{const u=await admin(req);if(req.method==='GET'){const {data,error}=await sb.from('products').select('*').eq('status','pending').order('created_at');if(error)throw error;return res.json({products:data});}if(req.method==='POST'){const b=typeof req.body==='string'?JSON.parse(req.body):req.body||{};const id=Number(b.id),action=String(b.action);if(!['approve','reject'].includes(action))throw new Error('Invalid action');const patch={status:action==='approve'?'approved':'rejected',reviewed_by:u.uid,reviewed_at:new Date().toISOString(),rejection_reason:action==='reject'?cleanText(b.reason||'Not approved',2,500,'reason'):null};const {data,error}=await sb.from('products').update(patch).eq('id',id).eq('status','pending').select().single();if(error)throw error;return res.json({product:data});}return res.status(405).json({error:'Method not allowed'});}catch(e){return res.status(e.message==='Forbidden'?403:400).json({error:e.message});}};
+const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}),BUCKET='product-images';
+function clean(v,min,max){const s=String(v||'').normalize('NFKC').trim();if(s.length<min||s.length>max||/<[^>]*>|javascript:|data:text\/html|on\w+\s*=/i.test(s))throw new Error('Invalid rejection reason');return s}
+async function user(req){const m=String(req.headers.authorization||'').match(/^Bearer\s+([^\s]+)$/i);if(!m)throw Object.assign(new Error('Unauthorized'),{statusCode:401});const r=await fetch('https://api.minepi.com/v2/me',{headers:{Authorization:`Bearer ${m[1]}`}}),j=await r.json().catch(()=>({}));if(!r.ok||!j.uid)throw Object.assign(new Error('Unauthorized'),{statusCode:401});const {data}=await sb.from('app_users').select('role').eq('pi_uid',String(j.uid)).single();if(data?.role!=='admin')throw Object.assign(new Error('Forbidden'),{statusCode:403});return{uid:String(j.uid)}}
+function path(url){try{const u=new URL(url),m='/storage/v1/object/public/product-images/',i=u.pathname.indexOf(m);return i<0?null:decodeURIComponent(u.pathname.slice(i+m.length))}catch{return null}}
+async function remove(urls){const paths=(urls||[]).map(path).filter(Boolean);if(paths.length){const {error}=await sb.storage.from(BUCKET).remove(paths);if(error)throw error}}
+module.exports=async(req,res)=>{res.setHeader('Cache-Control','no-store');try{const a=await user(req);if(req.method==='GET'){const [pending,users,allProducts,payments]=await Promise.all([sb.from('products').select('*').eq('status','pending').order('created_at',{ascending:true}),sb.from('app_users').select('pi_uid,username,role,is_banned,telegram_chat_id,created_at').order('created_at',{ascending:false}).limit(500),sb.from('products').select('id,status,promoted_until,promotion_tier,views,created_at'),sb.from('payments').select('payment_id,user_id,product_id,amount_pi,amount_usd,tier,status,txid,completed_at,created_at').order('created_at',{ascending:false}).limit(250)]);for(const x of[pending,users,allProducts,payments])if(x.error)throw x.error;const now=Date.now(),products=allProducts.data||[],paid=(payments.data||[]).filter(x=>x.status==='completed');return res.json({pending:pending.data||[],users:users.data||[],payments:payments.data||[],stats:{users:(users.data||[]).length,products:products.length,pending:products.filter(x=>x.status==='pending').length,approved:products.filter(x=>x.status==='approved').length,rejected:products.filter(x=>x.status==='rejected').length,promoted:products.filter(x=>x.status==='approved'&&x.promoted_until&&new Date(x.promoted_until).getTime()>now).length,totalViews:products.reduce((n,x)=>n+Number(x.views||0),0),completedPayments:paid.length,promotionRevenueUsd:paid.reduce((n,x)=>n+Number(x.amount_usd||0),0),promotionRevenuePi:paid.reduce((n,x)=>n+Number(x.amount_pi||0),0)}})}if(req.method==='POST'){const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{}),id=Number(b.id),action=String(b.action||'');if(!Number.isInteger(id)||!['approve','reject'].includes(action))throw new Error('Invalid action');const {data:p,error:pe}=await sb.from('products').select('*').eq('id',id).eq('status','pending').single();if(pe)throw pe;if(action==='approve'){if(!p.images?.length)throw new Error('Cannot approve an ad without images');const {data,error}=await sb.from('products').update({status:'approved',reviewed_by:a.uid,reviewed_at:new Date().toISOString(),rejection_reason:null}).eq('id',id).select().single();if(error)throw error;return res.json({product:data})}const reason=clean(b.reason||'',3,500);await remove(p.images);const {data,error}=await sb.from('products').update({status:'rejected',images:[],reviewed_by:a.uid,reviewed_at:new Date().toISOString(),rejection_reason:reason,promoted_until:null,promotion_tier:null,promoted_level:null,promoted_priority:null}).eq('id',id).select().single();if(error)throw error;return res.json({product:data})}return res.status(405).json({error:'Method not allowed'})}catch(e){console.error('admin:',e);return res.status(e.statusCode||400).json({error:e.message})}};
