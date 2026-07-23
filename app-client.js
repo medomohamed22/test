@@ -1,10 +1,38 @@
 'use strict';
 
-// Pi access tokens are intentionally kept only in memory.
-// No cookies, localStorage, sessionStorage, or frontend database keys are used.
+// Supabase keys never exist in the browser. The Pi access token is cached locally for at most 24 hours
+// to avoid asking the same user to authorize on every visit. It is removed automatically on expiry or auth failure.
+const AUTH_CACHE_KEY = 'dealway_pi_session_v1';
+const AUTH_TTL_MS = 24 * 60 * 60 * 1000;
+const PRODUCTS_CACHE_KEY = 'dealway_public_products_v1';
 let piAccessToken = null;
 let piInitialized = false;
 let loginInProgress = false;
+
+function savePiSession(accessToken) {
+  try { localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify({ accessToken, expiresAt: Date.now() + AUTH_TTL_MS })); } catch (_) {}
+}
+function restorePiSession() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(AUTH_CACHE_KEY) || 'null');
+    if (!cached?.accessToken || Number(cached.expiresAt) <= Date.now()) { localStorage.removeItem(AUTH_CACHE_KEY); return false; }
+    piAccessToken = cached.accessToken;
+    return true;
+  } catch (_) { return false; }
+}
+function clearPiSession() {
+  piAccessToken = null;
+  try { localStorage.removeItem(AUTH_CACHE_KEY); } catch (_) {}
+}
+function readProductsCache() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(PRODUCTS_CACHE_KEY) || 'null');
+    return Array.isArray(cached?.products) ? cached.products : null;
+  } catch (_) { return null; }
+}
+function writeProductsCache(products) {
+  try { localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify({ products, savedAt: Date.now() })); } catch (_) {}
+}
 
 function authHeaders(json = true) {
   const headers = { Accept: 'application/json' };
@@ -103,10 +131,11 @@ function initPi() {
 
       if (!auth?.accessToken) throw new Error('Pi did not return an access token.');
       piAccessToken = auth.accessToken;
+      savePiSession(piAccessToken);
       await handleLogin();
     } catch (e) {
       console.error('Pi login failed:', e);
-      piAccessToken = null;
+      clearPiSession();
       showToast(e.message || 'Login failed', 'error');
     } finally {
       loginInProgress = false;
@@ -141,7 +170,7 @@ async function handleLogin() {
 
 async function refreshTelegramButton(showErrors=false){const btn=el('telegramLinkBtn'),txt=el('telegramLinkText');if(!btn||!txt||!user)return;try{const d=await api('telegram-link',{headers:authHeaders(false)});btn.disabled=d.linked;btn.classList.toggle('btn-disabled',d.linked);txt.innerText=d.linked?(currentLang==='ar'?'تم الربط':'Linked'):(currentLang==='ar'?'ربط بوت تيليجرام':'Link Telegram Bot')}catch(e){if(showErrors)showToast(e.message,'error')}}
 async function linkTelegramBot(){if(!user)return showToast('toast_login_first','error');try{const d=await api('telegram-link',{method:'POST',headers:authHeaders(),body:'{}'});openTelegramExternal(BOT_USERNAME,d.token);if(telegramCheckTimer)clearInterval(telegramCheckTimer);telegramCheckTimer=setInterval(()=>refreshTelegramButton(false),2500)}catch(e){showToast(e.message,'error')}}
-async function loadAllProducts(){el('loading').style.display='block';try{const d=await api('public-products');globalProducts=(d.products||[]).sort(sortProductsByPromotion);renderProducts();openProductFromUrlOnce()}catch(e){safeSetHtml('products-list',`<div class="empty-state" style="grid-column:1/-1"><h3>خطأ</h3><p>${escapeHtml(e.message)}</p></div>`)}finally{el('loading').style.display='none'}}
+async function loadAllProducts(){const cached=readProductsCache();if(cached){globalProducts=cached.sort(sortProductsByPromotion);renderProducts();openProductFromUrlOnce()}else el('loading').style.display='block';try{const d=await api('public-products');globalProducts=(d.products||[]).sort(sortProductsByPromotion);writeProductsCache(globalProducts);renderProducts();openProductFromUrlOnce()}catch(e){if(!cached)safeSetHtml('products-list',`<div class="empty-state" style="grid-column:1/-1"><h3>خطأ</h3><p>${escapeHtml(e.message)}</p></div>`)}finally{el('loading').style.display='none'}}
 async function openProductDetails(pid){const p=globalProducts.find(x=>x.id==pid);if(!p)return;try{const d=await api('public-products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:Number(pid)})});p.views=d.views||p.views}catch(_){}const images=Array.isArray(p.images)&&p.images.length?p.images:['https://placehold.co/600x600/f1f5f9/94a3b8?text=No+Image'];el('detail-slider').innerHTML=images.map(src=>`<div class="slide"><img src="${escapeAttr(src)}" class="slide-img"></div>`).join('');el('detail-dots').innerHTML=images.map((_,i)=>`<div class="dot ${i===0?'active':''}" onclick="goToSlide(${i})"></div>`).join('');safeSetText('detail-title',p.name);updateDetailPrice(p);safeSetText('detail-desc',p.description);safeSetText('detail-loc-text',`${p.country||''} - ${p.location||''}`);safeSetText('detail-views',formatCurrency(p.views||0));safeSetText('detail-seller-name',p.seller_username||'Unknown');safeSetText('detail-seller-avatar',(p.seller_username||'U').charAt(0).toUpperCase());const own=user&&p.seller_pi_id===user.uid;el('detail-actions').innerHTML=own?`<button onclick="openPromoteOptions(${Number(p.id)})" class="btn" style="width:100%">${escapeHtml(t('promote_ad_btn'))}</button><button onclick="deleteProduct(${Number(p.id)})" class="btn btn-danger" style="width:100%">${escapeHtml(t('delete_btn'))}</button>`:`<button onclick="openChatRoom(${Number(p.id)},'${escapeAttr(p.seller_pi_id)}','${escapeAttr(p.name)}','${escapeAttr(p.seller_username||'User')}')" class="btn btn-primary" style="width:100%">${escapeHtml(t('message_seller'))}</button>`;document.querySelectorAll('.view-section').forEach(e=>e.classList.add('hidden'));el('view-details').classList.remove('hidden')}
 async function loadMyAds(){if(!user)return;const list=el('my-ads-list');try{const d=await api('products',{headers:authHeaders(false)}),products=d.products||[];safeSetText('stat-ads',products.length);safeSetText('stat-views',formatCurrency(products.reduce((s,p)=>s+(p.views||0),0)));list.innerHTML=products.map(p=>{const img=p.images?.[0]||'https://placehold.co/400x400/f1f5f9/94a3b8?text=No+Image',ar=currentLang==='ar',state=p.status==='pending'?(ar?'قيد المراجعة':'Pending'):p.status==='rejected'?(ar?'مرفوض':'Rejected'):(ar?'مقبول':'Approved'),reason=p.status==='rejected'&&p.rejection_reason?`<div style="margin-top:8px;padding:9px;border-radius:10px;background:#fef2f2;color:#b91c1c;font-size:12px">${escapeHtml(ar?'سبب الرفض: ':'Reason: ')}${escapeHtml(p.rejection_reason)}</div>`:'';return `<div class="card"><div onclick="openProductDetails(${Number(p.id)})"><div class="card-img-wrap"><img src="${escapeAttr(img)}" class="card-img" loading="lazy"></div><div class="card-body"><div class="card-title">${escapeHtml(p.name)}</div><div>${escapeHtml(state)}</div>${reason}</div></div><div style="display:flex;gap:8px;padding:0 12px 12px"><button class="btn btn-danger" style="flex:1;padding:9px" onclick="deleteProduct(${Number(p.id)})">${escapeHtml(t('delete_btn'))}</button></div></div>`}).join('')||`<div class="empty-state"><h3>${escapeHtml(t('no_products'))}</h3></div>`}catch(e){list.innerHTML=`<div class="empty-state"><p>${escapeHtml(friendlyDbError(e))}</p></div>`}}
 function fileToDataUrl(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
@@ -170,8 +199,8 @@ async function promoteProduct(productId,tier){if(!window.Pi||!user)return showTo
 function openChatRoom(pid,otherId,pName,uName){if(!user)return showToast('toast_login_first','error');activeChat={pid,otherId};safeSetText('chatTitle',pName);safeSetText('chatPeer',uName);el('chatModal').style.display='flex';loadMessages();api('messages',{method:'PATCH',headers:authHeaders(),body:JSON.stringify({productId:pid,otherPiId:otherId})}).catch(()=>{})}
 async function loadMessages(){if(!activeChat)return;const d=await api(`messages?productId=${encodeURIComponent(activeChat.pid)}`,{headers:authHeaders(false)});el('msgContainer').innerHTML='';(d.messages||[]).filter(m=>(m.sender_pi_id===user.uid&&m.receiver_pi_id===activeChat.otherId)||(m.sender_pi_id===activeChat.otherId&&m.receiver_pi_id===user.uid)).forEach(renderMsg)}
 function renderMsg(m){const div=document.createElement('div');div.className=`bubble ${m.sender_pi_id===user.uid?'me':'other'}`;div.innerText=m.content;el('msgContainer').appendChild(div)}
-async function sendMsg(){const inp=el('msgInput');if(!activeChat||!inp.value.trim())return;try{await api('messages',{method:'POST',headers:authHeaders(),body:JSON.stringify({productId:activeChat.pid,receiverPiId:activeChat.otherId,content:inp.value.trim()})});inp.value='';await loadMessages()}catch(e){showToast(e.message,'error')}}
+async function sendMsg(){const inp=el('msgInput');if(!activeChat||!inp.value.trim())return;const content=inp.value.trim();inp.value='';const temp={sender_pi_id:user.uid,content};renderMsg(temp);const box=el('msgContainer');box.scrollTop=box.scrollHeight;try{await api('messages',{method:'POST',headers:authHeaders(),body:JSON.stringify({productId:activeChat.pid,receiverPiId:activeChat.otherId,content})});setTimeout(()=>loadMessages().catch(()=>{}),250)}catch(e){showToast(e.message,'error');await loadMessages().catch(()=>{})}}
 function closeChat(){el('chatModal').style.display='none';activeChat=null}
 async function loadInbox(){if(!user)return;const list=el('inbox-list');try{const d=await api('messages',{headers:authHeaders(false)}),threads=new Map();(d.messages||[]).slice().reverse().forEach(m=>{const other=m.sender_pi_id===user.uid?m.receiver_pi_id:m.sender_pi_id,key=`${m.product_id}_${other}`;if(!threads.has(key))threads.set(key,{pid:m.product_id,otherId:other,pName:m.products?.name||'Item',last:m.content,name:m.sender_pi_id===other?m.sender_username:m.receiver_username,unread:!m.is_read&&m.receiver_pi_id===user.uid})});list.innerHTML=[...threads.values()].map(x=>`<div class="inbox-item ${x.unread?'unread':''}" onclick="openChatRoom(${x.pid},'${escapeAttr(x.otherId)}','${escapeAttr(x.pName)}','${escapeAttr(x.name)}')"><div class="inbox-info"><div class="inbox-name">${escapeHtml(x.name)}</div><div class="inbox-msg">${escapeHtml(x.last)}</div></div></div>`).join('')||`<div class="empty-state"><h3>${escapeHtml(t('no_messages'))}</h3></div>`}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`}}
 async function checkUnreadMessages(){if(!user)return;try{const d=await api('messages',{headers:authHeaders(false)}),count=(d.messages||[]).filter(m=>!m.is_read&&m.receiver_pi_id===user.uid).length,b=el('chat-badge');if(count){b.innerText=count>9?'+9':count;b.classList.remove('hidden')}else b.classList.add('hidden')}catch(_){}}
-document.addEventListener('DOMContentLoaded',()=>{updateLanguage();initDragAndDrop();initPi();refreshPiPrice();loadAllProducts();initLocations()});setInterval(refreshPiPrice,60000);
+document.addEventListener('DOMContentLoaded',()=>{updateLanguage();initDragAndDrop();initPi();refreshPiPrice();loadAllProducts();initLocations();if(restorePiSession())handleLogin().catch(()=>clearPiSession())});setInterval(refreshPiPrice,60000);
