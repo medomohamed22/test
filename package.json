@@ -1,6 +1,7 @@
 {
   "private": true,
+  "engines": { "node": "22.x" },
   "dependencies": {
-    "@supabase/supabase-js": "2.45.4"
+    "@supabase/supabase-js": "2.110.7"
   }
 }
