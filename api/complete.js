@@ -1,160 +1,19 @@
-const { createClient } = require('@supabase/supabase-js');
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const PI_API_KEY = process.env.PI_API_KEY;
-const PI_API_BASE = 'https://api.minepi.com/v2';
-
-if (!SUPABASE_URL) throw new Error('Missing SUPABASE_URL');
-if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
-if (!PI_API_KEY) throw new Error('Missing PI_API_KEY');
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false }
-});
-
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-function readBody(req) {
-  if (!req.body) return {};
-  return typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-}
-
-function parseMetadata(metadata) {
-  if (!metadata) return {};
-  if (typeof metadata === 'string') {
-    try { return JSON.parse(metadata); } catch { return {}; }
-  }
-  return metadata;
-}
-
-async function applyPromotion(productId, days, level, paymentId, txid) {
-  const { data: product, error: readError } = await supabase
-    .from('products')
-    .select('id, promoted_until')
-    .eq('id', productId)
-    .single();
-
-  if (readError) throw readError;
-  if (!product) throw new Error('Product not found');
-
-  let expiry = new Date();
-
-  if (product.promoted_until && new Date(product.promoted_until) > expiry) {
-    expiry = new Date(product.promoted_until);
-  }
-
-  expiry.setDate(expiry.getDate() + Number(days || 3));
-
-  const payload = {
-    promoted_until: expiry.toISOString(),
-    promoted_level: Number(level || 1),
-    promotion_tier: Number(level || 1),
-    promoted_priority: Number(level || 1),
-    last_payment_id: paymentId,
-    last_payment_txid: txid
-  };
-
-  const { error } = await supabase
-    .from('products')
-    .update(payload)
-    .eq('id', productId);
-
-  if (error) throw error;
-
-  return expiry.toISOString();
-}
-
-async function logPayment(row) {
-  const { error } = await supabase
-    .from('payments')
-    .upsert(row, { onConflict: 'payment_id' });
-
-  if (error) console.warn('Payment log warning:', error.message);
-}
-
-module.exports = async function handler(req, res) {
-  setCors(res);
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  try {
-    const body = readBody(req);
-    const { paymentId, txid } = body;
-
-    if (!paymentId || !txid) {
-      return res.status(400).json({ error: 'paymentId and txid are required' });
-    }
-
-    await fetch(`${PI_API_BASE}/payments/${paymentId}/complete`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Key ${PI_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ txid })
-    });
-
-    const piRes = await fetch(`${PI_API_BASE}/payments/${paymentId}`, {
-      headers: { Authorization: `Key ${PI_API_KEY}` }
-    });
-
-    if (!piRes.ok) {
-      throw new Error(`Could not fetch payment from Pi: ${await piRes.text()}`);
-    }
-
-    const piData = await piRes.json();
-    const metadata = parseMetadata(piData.metadata);
-
-    const productId =
-      metadata.productId ||
-      metadata.product_id ||
-      body.productId ||
-      body.product_id;
-
-    if (!productId) {
-      return res.status(400).json({ error: 'Product ID missing' });
-    }
-
-    const usdAmount = Number(metadata.usdAmount || body.usdAmount || 0);
-    const days = Number(metadata.days || body.days || (usdAmount >= 10 ? 14 : usdAmount >= 5 ? 7 : 3));
-    const level = Number(metadata.level || body.level || usdAmount || 1);
-    const amountPi = Number(piData.amount || metadata.piAmount || body.piAmount || 0);
-
-    const promotedUntil = await applyPromotion(productId, days, level, paymentId, txid);
-
-    await logPayment({
-      payment_id: paymentId,
-      user_id: piData.user_uid || metadata.sellerPiId || null,
-      product_id: productId,
-      amount: amountPi,
-      amount_pi: amountPi,
-      amount_usd: usdAmount || null,
-      pi_usd_price: metadata.piUsdPrice || body.piUsdPrice || null,
-      status: 'completed',
-      txid,
-      days,
-      promoted_until: promotedUntil
-    });
-
-    return res.status(200).json({
-      success: true,
-      completed: true,
-      productId,
-      daysAdded: days,
-      promotedLevel: level,
-      promotedUntil
-    });
-
-  } catch (err) {
-    console.error('complete error:', err);
-    return res.status(500).json({ error: err.message });
-  }
-};
+const {createClient}=require('@supabase/supabase-js');
+const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false}});
+const PI='https://api.minepi.com/v2';
+const PLANS={1:{usd:1,days:3},2:{usd:5,days:7},3:{usd:10,days:14}};
+module.exports=async(req,res)=>{if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});try{
+ const b=typeof req.body==='string'?JSON.parse(req.body):req.body||{};if(!b.paymentId||!b.txid)throw new Error('paymentId and txid required');
+ const complete=await fetch(`${PI}/payments/${encodeURIComponent(b.paymentId)}/complete`,{method:'POST',headers:{Authorization:`Key ${process.env.PI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({txid:b.txid})});
+ if(!complete.ok)throw new Error(`Pi completion rejected: ${await complete.text()}`);
+ const r=await fetch(`${PI}/payments/${encodeURIComponent(b.paymentId)}`,{headers:{Authorization:`Key ${process.env.PI_API_KEY}`}});if(!r.ok)throw new Error('Cannot verify payment');const p=await r.json();
+ if(!p.status?.developer_completed||!p.status?.transaction_verified||p.status?.cancelled||p.status?.user_cancelled)throw new Error('Payment is not fully verified');
+ if(p.transaction?.txid!==b.txid)throw new Error('Transaction mismatch');
+ const m=typeof p.metadata==='string'?JSON.parse(p.metadata):p.metadata||{};const productId=Number(m.productId||m.product_id);const tier=Number(m.level||m.tier);const plan=PLANS[tier];if(!productId||!plan)throw new Error('Invalid payment metadata');
+ const {data:product}=await sb.from('products').select('id,seller_pi_id,promoted_until,status').eq('id',productId).single();if(!product||product.seller_pi_id!==p.user_uid)throw new Error('Payment owner mismatch');if(product.status!=='approved')throw new Error('Only approved ads can be promoted');
+ const okx=await fetch('https://www.okx.com/api/v5/market/ticker?instId=PI-USDT').then(x=>x.json());const piUsd=Number(okx.data?.[0]?.last);if(!piUsd)throw new Error('Cannot verify PI price');const expected=plan.usd/piUsd;const paid=Number(p.amount);if(Math.abs(paid-expected)/expected>0.03)throw new Error('Paid amount does not match current plan price');
+ let expiry=new Date();if(product.promoted_until&&new Date(product.promoted_until)>expiry)expiry=new Date(product.promoted_until);expiry.setUTCDate(expiry.getUTCDate()+plan.days);
+ const {error:pe}=await sb.from('payments').insert({payment_id:b.paymentId,user_id:p.user_uid,product_id:productId,txid:b.txid,amount_pi:paid,amount_usd:plan.usd,pi_usd_price:piUsd,tier,days:plan.days,status:'completed',raw_payment:p,completed_at:new Date().toISOString()});if(pe&&pe.code!=='23505')throw pe;
+ const {error}=await sb.from('products').update({promoted_until:expiry.toISOString(),promotion_tier:tier,promoted_level:tier,promoted_priority:tier,last_payment_id:b.paymentId,last_payment_txid:b.txid}).eq('id',productId);if(error)throw error;
+ return res.json({success:true,promotedUntil:expiry.toISOString(),tier});
+}catch(e){console.error(e);return res.status(400).json({error:e.message});}};
