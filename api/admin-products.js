@@ -161,8 +161,23 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-      const id = Number(body.id);
       const action = String(body.action || '');
+
+      if (action === 'ban_user' || action === 'unban_user') {
+        const piUid = String(body.piUid || '').trim();
+        if (!piUid) throw httpError('معرّف المستخدم غير صالح');
+        if (piUid === admin.uid) throw httpError('لا يمكنك حظر حساب الأدمن المستخدم حاليًا', 400, 'CANNOT_BAN_SELF');
+        const { data: target, error: targetError } = await sb.from('app_users').select('pi_uid,role,is_banned').eq('pi_uid', piUid).maybeSingle();
+        if (targetError) throw httpError(targetError.message, 500, 'USER_LOOKUP_FAILED');
+        if (!target) throw httpError('المستخدم غير موجود', 404, 'USER_NOT_FOUND');
+        if (target.role === 'admin') throw httpError('لا يمكن حظر حساب أدمن من هذه الواجهة', 403, 'CANNOT_BAN_ADMIN');
+        const nextBanned = action === 'ban_user';
+        const { data, error } = await sb.from('app_users').update({ is_banned: nextBanned }).eq('pi_uid', piUid).select('pi_uid,username,role,is_banned,telegram_chat_id,telegram_username,created_at').single();
+        if (error) throw httpError(error.message, 500, 'USER_BAN_UPDATE_FAILED');
+        return res.status(200).json({ user: data, message: nextBanned ? 'تم حظر المستخدم' : 'تم فك حظر المستخدم' });
+      }
+
+      const id = Number(body.id);
       if (!Number.isInteger(id) || !['approve', 'reject'].includes(action)) throw httpError('طلب مراجعة غير صالح');
 
       const { data: product, error: productError } = await sb.from('products').select('*').eq('id', id).eq('status', 'pending').maybeSingle();
