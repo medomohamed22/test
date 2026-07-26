@@ -8,14 +8,12 @@ async function user(req){const m=String(req.headers.authorization||'').match(/^B
 async function ownedProduct(id,uid){const {data,error}=await sb.from('products').select('*').eq('id',id).eq('seller_pi_id',uid).maybeSingle();if(error)throw error;if(!data)fail('Product not found','PRODUCT_NOT_FOUND',404);return data}
 module.exports=async(req,res)=>{res.setHeader('Cache-Control','no-store');try{const u=await user(req),b=parse(req),action=String(req.query?.action||b.action||'dashboard');
 if(req.method==='GET'&&action==='dashboard'){
- const [fav,saved,blocks,reviews,verification]=await Promise.all([
+ const [fav,reviews,verification]=await Promise.all([
   sb.from('favorites').select('product_id,created_at,products(id,name,price_usd,images,country,location,status,promoted_until)').eq('user_pi_id',u.uid).order('created_at',{ascending:false}),
-  sb.from('saved_searches').select('*').eq('user_pi_id',u.uid).order('created_at',{ascending:false}),
-  sb.from('user_blocks').select('blocked_pi_id,created_at').eq('blocker_pi_id',u.uid),
   sb.from('reviews').select('id,rating,comment,created_at,reviewer_username,seller_pi_id,product_id').or(`reviewer_pi_id.eq.${u.uid},seller_pi_id.eq.${u.uid}`).order('created_at',{ascending:false}).limit(100),
   sb.from('app_users').select('verification_level,verification_status,verification_phone,created_at').eq('pi_uid',u.uid).maybeSingle()
- ]);for(const x of [fav,saved,blocks,reviews,verification])if(x.error)throw x.error;
- return res.json({favorites:fav.data||[],savedSearches:saved.data||[],blocks:blocks.data||[],reviews:reviews.data||[],verification:verification.data||{}})
+ ]);for(const x of [fav,reviews,verification])if(x.error)throw x.error;
+ return res.json({favorites:fav.data||[],reviews:reviews.data||[],verification:verification.data||{}})
 }
 if(req.method==='GET'&&action==='seller'){
  const seller=text(req.query?.seller,1,128,'seller');const [profile,reviews,counts]=await Promise.all([

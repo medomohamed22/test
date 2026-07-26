@@ -93,7 +93,7 @@ async function countRows(table, filter) {
 
 async function getDashboard() {
   const [pendingResult, usersResult, paymentsResult] = await Promise.all([
-    safeQuery('الإعلانات المعلقة', sb.from('products').select('*').eq('status', 'pending').order('created_at', { ascending: true }).limit(200), []),
+    safeQuery('كل الإعلانات', sb.from('products').select('*').order('created_at', { ascending: false }).limit(500), []),
     safeQuery('المستخدمون', sb.from('app_users').select('pi_uid,username,role,is_banned,telegram_chat_id,telegram_username,verification_status,verification_level,verification_phone,created_at').order('created_at', { ascending: false }).limit(500), []),
     safeQuery('المدفوعات', sb.from('payments').select('payment_id,user_id,product_id,amount_pi,amount_usd,tier,days,status,txid,completed_at,created_at').order('created_at', { ascending: false }).limit(250), []),
   ]);
@@ -140,7 +140,8 @@ async function getDashboard() {
   stats.promotionRevenuePi = completed.reduce((sum, p) => sum + Number(p.amount_pi || 0), 0);
 
   return {
-    pending: pendingResult.value,
+    products: pendingResult.value,
+    pending: pendingResult.value.filter((p) => p.status === 'pending'),
     users,
     payments: enrichedPayments,
     stats,
@@ -186,8 +187,25 @@ module.exports = async (req, res) => {
       }
 
       const id = Number(body.id);
-      if (!Number.isInteger(id) || !['approve', 'reject'].includes(action)) throw httpError('طلب مراجعة غير صالح');
+      if (!Number.isInteger(id)) throw httpError('معرّف الإعلان غير صالح');
 
+      if (['hide_product','unhide_product','delete_product'].includes(action)) {
+        const { data: product, error: lookupError } = await sb.from('products').select('*').eq('id', id).maybeSingle();
+        if (lookupError) throw httpError(lookupError.message,500,'PRODUCT_LOOKUP_FAILED');
+        if (!product) throw httpError('الإعلان غير موجود',404,'PRODUCT_NOT_FOUND');
+        if (action === 'delete_product') {
+          await removeImages(product.images);
+          const { error } = await sb.from('products').delete().eq('id',id);
+          if (error) throw httpError(error.message,500,'PRODUCT_DELETE_FAILED');
+          return res.status(200).json({message:'تم حذف الإعلان نهائيًا'});
+        }
+        const nextStatus = action === 'hide_product' ? 'hidden' : 'approved';
+        const { data, error } = await sb.from('products').update({status:nextStatus,reviewed_by:admin.uid,reviewed_at:new Date().toISOString()}).eq('id',id).select().single();
+        if (error) throw httpError(error.message,500,'PRODUCT_VISIBILITY_FAILED');
+        return res.status(200).json({product:data,message:nextStatus==='hidden'?'تم إخفاء الإعلان':'تم إظهار الإعلان'});
+      }
+
+      if (!['approve', 'reject'].includes(action)) throw httpError('الإجراء غير مدعوم');
       const { data: product, error: productError } = await sb.from('products').select('*').eq('id', id).eq('status', 'pending').maybeSingle();
       if (productError) throw httpError(productError.message, 500, 'PRODUCT_LOOKUP_FAILED');
       if (!product) throw httpError('الإعلان غير موجود أو تمت مراجعته بالفعل', 404, 'PRODUCT_NOT_PENDING');
