@@ -2,6 +2,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 function fail(message,code,status=400){const e=new Error(message);e.code=code;e.statusCode=status;throw e}
+function isNotificationsAccessError(error){return Boolean(error&&(['42501','42P01','42703'].includes(String(error.code))||/permission denied for table notifications|relation .*notifications.* does not exist|column .* does not exist/i.test(String(error.message||''))))}
 function parse(req){return typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{})}
 function text(v,min,max,name){const s=String(v??'').normalize('NFKC').trim().replace(/[\u0000-\u001f\u007f]/g,' ');if(s.length<min||s.length>max)fail(`${name} is invalid`,`${name.toUpperCase()}_INVALID`);if(/<[^>]*>|javascript:|data:text\/html|on\w+\s*=/i.test(s))fail(`${name} contains forbidden content`,`${name.toUpperCase()}_UNSAFE`);return s}
 async function user(req){const m=String(req.headers.authorization||'').match(/^Bearer\s+([^\s]+)$/i);if(!m)fail('Login required','PI_TOKEN_MISSING',401);const c=new AbortController(),timer=setTimeout(()=>c.abort(),8000);try{const r=await fetch('https://api.minepi.com/v2/me',{headers:{Authorization:`Bearer ${m[1]}`,Accept:'application/json'},signal:c.signal});const j=await r.json().catch(()=>({}));if(!r.ok||!j.uid)fail('Invalid Pi session','PI_TOKEN_INVALID',401);await sb.from('app_users').upsert({pi_uid:String(j.uid),username:String(j.username||'Pioneer'),updated_at:new Date().toISOString()},{onConflict:'pi_uid'});return{uid:String(j.uid),username:String(j.username||'Pioneer')}}finally{clearTimeout(timer)}}
@@ -42,10 +43,14 @@ if(req.method==='POST'&&action==='event'){
  const id=Number(b.productId),type=String(b.eventType);if(!Number.isInteger(id)||!['view','chat','contact','share','favorite'].includes(type))fail('Invalid event','EVENT_INVALID');const {error}=await sb.from('product_events').insert({product_id:id,actor_pi_id:u.uid,event_type:type});if(error)throw error;return res.json({success:true})
 }
 if(req.method==='GET'&&action==='notifications'){
- const {data,error}=await sb.from('notifications').select('id,type,title_ar,title_en,body_ar,body_en,product_id,is_read,created_at').eq('user_pi_id',u.uid).order('created_at',{ascending:false}).limit(100);if(error)throw error;return res.json({notifications:data||[]})
+ const {data,error}=await sb.from('notifications').select('id,type,title_ar,title_en,body_ar,body_en,product_id,is_read,created_at').eq('user_pi_id',u.uid).order('created_at',{ascending:false}).limit(100);
+ if(error){if(isNotificationsAccessError(error)){console.warn('notifications unavailable:',error.code,error.message);return res.json({notifications:[],temporarilyUnavailable:true})}throw error}
+ return res.json({notifications:data||[]})
 }
 if(req.method==='POST'&&action==='notification-read'){
- const id=Number(b.id);let q=sb.from('notifications').update({is_read:true}).eq('user_pi_id',u.uid);if(Number.isInteger(id))q=q.eq('id',id);const {error}=await q;if(error)throw error;return res.json({success:true})
+ const id=Number(b.id);let q=sb.from('notifications').update({is_read:true}).eq('user_pi_id',u.uid);if(Number.isInteger(id))q=q.eq('id',id);const {error}=await q;
+ if(error){if(isNotificationsAccessError(error)){console.warn('notification update unavailable:',error.code,error.message);return res.json({success:true,temporarilyUnavailable:true})}throw error}
+ return res.json({success:true})
 }
 if(req.method==='POST'&&action==='client-error'){
  const message=text(b.message||'Unknown error',1,500,'message'),source=text(b.source||'frontend',1,80,'source');await sb.from('app_error_logs').insert({user_pi_id:u.uid,source,code:String(b.code||'').slice(0,80),message,details:b.details&&typeof b.details==='object'?b.details:{}});return res.json({success:true})
