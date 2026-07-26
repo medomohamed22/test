@@ -2,4 +2,45 @@
 const {createClient}=require('@supabase/supabase-js');
 const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 const SORTS={newest:['created_at',false],price_asc:['price_usd',true],price_desc:['price_usd',false],views_desc:['views',false]};
-module.exports=async(req,res)=>{try{if(req.method==='GET'){res.setHeader('Cache-Control','public, s-maxage=90, stale-while-revalidate=600');const limit=Math.min(300,Math.max(1,Number(req.query?.limit)||200)),sort=SORTS[req.query?.sort]||SORTS.newest;let q=sb.from('products').select('id,seller_pi_id,seller_username,name,description,category,country,location,price_usd,images,status,views,promoted_until,promotion_tier,created_at').eq('status','approved');if(req.query?.category)q=q.eq('category',String(req.query.category).slice(0,80));if(req.query?.country)q=q.eq('country',String(req.query.country).slice(0,100));if(req.query?.location)q=q.eq('location',String(req.query.location).slice(0,100));q=q.order(sort[0],{ascending:sort[1],nullsFirst:false}).limit(limit);const {data,error}=await q;if(error)throw error;return res.json({products:data||[]})}if(req.method==='POST'){res.setHeader('Cache-Control','no-store');const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{}),id=Number(b.id);if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'Invalid id'});const {data,error}=await sb.rpc('increment_product_views',{product_id_input:id});if(error){console.error('view count:',error.message);return res.json({views:null,counted:false})}return res.json({views:data,counted:true})}return res.status(405).json({error:'Method not allowed'})}catch(e){console.error('public-products:',e);return res.status(500).json({error:'Request failed'})}};
+
+async function enrichSellerStats(products){
+  if(!products.length)return products;
+  const sellerIds=[...new Set(products.map(p=>p.seller_pi_id).filter(Boolean))];
+  if(!sellerIds.length)return products;
+
+  const [{data:users,error:usersError},{data:approvedAds,error:adsError}]=await Promise.all([
+    sb.from('app_users').select('pi_uid,created_at').in('pi_uid',sellerIds),
+    sb.from('products').select('seller_pi_id').eq('status','approved').in('seller_pi_id',sellerIds)
+  ]);
+  if(usersError)console.error('seller users:',usersError.message);
+  if(adsError)console.error('seller ad counts:',adsError.message);
+
+  const joined=new Map((users||[]).map(u=>[u.pi_uid,u.created_at]));
+  const counts=new Map();
+  for(const ad of approvedAds||[])counts.set(ad.seller_pi_id,(counts.get(ad.seller_pi_id)||0)+1);
+  return products.map(p=>({...p,seller_joined_at:joined.get(p.seller_pi_id)||null,seller_ads_count:counts.get(p.seller_pi_id)||0}));
+}
+
+module.exports=async(req,res)=>{try{
+  if(req.method==='GET'){
+    // Always validate against the database so a newly approved ad from a new country appears immediately.
+    res.setHeader('Cache-Control','no-store, max-age=0');
+    const limit=Math.min(300,Math.max(1,Number(req.query?.limit)||200)),sort=SORTS[req.query?.sort]||SORTS.newest;
+    let q=sb.from('products').select('id,seller_pi_id,seller_username,name,description,category,country,location,price_usd,images,status,views,promoted_until,promotion_tier,created_at').eq('status','approved');
+    if(req.query?.category)q=q.eq('category',String(req.query.category).slice(0,80));
+    if(req.query?.country)q=q.eq('country',String(req.query.country).slice(0,100));
+    if(req.query?.location)q=q.eq('location',String(req.query.location).slice(0,100));
+    q=q.order(sort[0],{ascending:sort[1],nullsFirst:false}).limit(limit);
+    const {data,error}=await q;if(error)throw error;
+    return res.json({products:await enrichSellerStats(data||[])});
+  }
+  if(req.method==='POST'){
+    res.setHeader('Cache-Control','no-store');
+    const b=typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{}),id=Number(b.id);
+    if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'Invalid id'});
+    const {data,error}=await sb.rpc('increment_product_views',{product_id_input:id});
+    if(error){console.error('view count:',error.message);return res.json({views:null,counted:false})}
+    return res.json({views:data,counted:true});
+  }
+  return res.status(405).json({error:'Method not allowed'});
+}catch(e){console.error('public-products:',e);return res.status(500).json({error:'Request failed'})}};
