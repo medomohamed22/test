@@ -9,16 +9,16 @@ async function enrichSellerStats(products){
   if(!sellerIds.length)return products;
 
   const [{data:users,error:usersError},{data:approvedAds,error:adsError}]=await Promise.all([
-    sb.from('app_users').select('pi_uid,created_at').in('pi_uid',sellerIds),
+    sb.from('app_users').select('pi_uid,created_at,verification_level,verification_status').in('pi_uid',sellerIds),
     sb.from('products').select('seller_pi_id').eq('status','approved').in('seller_pi_id',sellerIds)
   ]);
   if(usersError)console.error('seller users:',usersError.message);
   if(adsError)console.error('seller ad counts:',adsError.message);
 
-  const joined=new Map((users||[]).map(u=>[u.pi_uid,u.created_at]));
+  const userMap=new Map((users||[]).map(u=>[u.pi_uid,u]));
   const counts=new Map();
   for(const ad of approvedAds||[])counts.set(ad.seller_pi_id,(counts.get(ad.seller_pi_id)||0)+1);
-  return products.map(p=>({...p,seller_joined_at:joined.get(p.seller_pi_id)||null,seller_ads_count:counts.get(p.seller_pi_id)||0}));
+  return products.map(p=>{const u=userMap.get(p.seller_pi_id)||{};return {...p,seller_joined_at:u.created_at||null,seller_verification_level:u.verification_level||'none',seller_verification_status:u.verification_status||'unverified',seller_ads_count:counts.get(p.seller_pi_id)||0}});
 }
 
 module.exports=async(req,res)=>{try{
@@ -26,7 +26,7 @@ module.exports=async(req,res)=>{try{
     // Always validate against the database so a newly approved ad from a new country appears immediately.
     res.setHeader('Cache-Control','no-store, max-age=0');
     const limit=Math.min(300,Math.max(1,Number(req.query?.limit)||200)),sort=SORTS[req.query?.sort]||SORTS.newest;
-    let q=sb.from('products').select('id,seller_pi_id,seller_username,name,description,category,country,location,price_usd,images,status,views,promoted_until,promotion_tier,created_at').eq('status','approved');
+    let q=sb.from('products').select('id,seller_pi_id,seller_username,name,description,category,country,location,price_usd,images,status,item_status,attributes,latitude,longitude,views,promoted_until,promotion_tier,bumped_at,created_at').eq('status','approved');
     if(req.query?.category)q=q.eq('category',String(req.query.category).slice(0,80));
     if(req.query?.country)q=q.eq('country',String(req.query.country).slice(0,100));
     if(req.query?.location)q=q.eq('location',String(req.query.location).slice(0,100));

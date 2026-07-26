@@ -123,6 +123,10 @@ module.exports = async (req, res) => {
       if (productError) throw productError;
       if (!product || product.status !== 'approved') throw httpError('Product unavailable', 404, 'PRODUCT_UNAVAILABLE');
 
+      const { data: blocks, error: blockError } = await sb.from('user_blocks').select('blocker_pi_id,blocked_pi_id').or(`and(blocker_pi_id.eq.${user.uid},blocked_pi_id.eq.${receiverPiId}),and(blocker_pi_id.eq.${receiverPiId},blocked_pi_id.eq.${user.uid})`);
+      if (blockError) throw blockError;
+      if ((blocks || []).length) throw httpError('Messaging is unavailable because one user blocked the other', 403, 'USER_BLOCKED');
+
       // A conversation is only allowed between the seller and another user.
       const validReceiver = receiverPiId !== user.uid && (receiverPiId === product.seller_pi_id || user.uid === product.seller_pi_id);
       if (!validReceiver) throw httpError('Invalid chat target', 403, 'INVALID_CHAT_TARGET');
@@ -134,6 +138,7 @@ module.exports = async (req, res) => {
         content,
       }).select().single();
       if (insertError) throw insertError;
+      await sb.from('product_events').insert({ product_id: productId, actor_pi_id: user.uid, event_type: 'chat' }).then(({error})=>{if(error)console.error('chat event:',error.message)});
 
       const { data: target, error: targetError } = await sb.from('app_users')
         .select('pi_uid,username,telegram_chat_id')
