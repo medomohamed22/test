@@ -289,6 +289,61 @@ function renderDetailMarketplace(p){const box=el('detail-marketplace');if(!box||
 function renderCategoryAttributes(){const c=el('categoryAttributes'),cat=el('addCategory')?.value,fields=CATEGORY_FIELDS[cat]||[];if(!c)return;c.style.display=fields.length?'block':'none';c.innerHTML=fields.length?`<h4>${currentLang==='ar'?'تفاصيل القسم':'Category details'}</h4>${fields.map(([k,ar,en])=>`<div class="form-group"><label class="form-label">${currentLang==='ar'?ar:en}</label><input class="input-box category-attr" data-key="${k}" maxlength="100"></div>`).join('')}`:''}
 function collectAttributes(){return Object.fromEntries([...document.querySelectorAll('.category-attr')].map(x=>[x.dataset.key,x.value.trim()]).filter(x=>x[1]))}
 function offsetLocationKm(lat,lng,km=10){const R=6371,bearing=Math.random()*Math.PI*2,d=km/R,lat1=lat*Math.PI/180,lng1=lng*Math.PI/180;const lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(bearing));const lng2=lng1+Math.atan2(Math.sin(bearing)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));return{lat:lat2*180/Math.PI,lng:((lng2*180/Math.PI+540)%360)-180}}
+
+async function fileToUploadData(file){
+  if(!(file instanceof File)) throw new Error(currentLang==='ar'?'ملف الصورة غير صالح.':'Invalid image file.');
+  const allowed=new Set(['image/jpeg','image/png','image/webp']);
+  if(!allowed.has(file.type)){
+    const e=new Error(currentLang==='ar'?'ارفع صور JPEG أو PNG أو WEBP فقط.':'Upload JPEG, PNG, or WEBP images only.');
+    e.code='IMAGE_TYPE';throw e;
+  }
+  let output=file;
+  if(window.imageCompression){
+    output=await window.imageCompression(file,{maxSizeMB:1.6,maxWidthOrHeight:1600,useWebWorker:true,initialQuality:0.86,fileType:file.type});
+  }
+  if(output.size>2*1024*1024){const e=new Error(currentLang==='ar'?'تعذر ضغط الصورة لأقل من 2 ميجابايت.':'Could not compress the image below 2 MB.');e.code='IMAGE_TOO_LARGE';throw e;}
+  const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error(currentLang==='ar'?'تعذر قراءة الصورة.':'Could not read the image.'));reader.readAsDataURL(output)});
+  return {name:String(output.name||file.name||'image').slice(0,120),type:output.type||file.type,data};
+}
+
+async function submitProduct(){
+  if(!user||!piAccessToken)return showToast(t('toast_login_first'),'error');
+  const btn=el('publishBtn');
+  if(btn?.disabled)return;
+  const name=String(el('addName')?.value||'').trim();
+  const category=String(el('addCategory')?.value||'').trim();
+  const country=String(el('addCountry')?.value||'').trim();
+  const location=String(el('addState')?.value||'').trim();
+  const description=String(el('addDesc')?.value||'').trim();
+  const priceUsd=Number(el('addPrice')?.value);
+  if(name.length<2||!category||!country||!location||description.length<20||!Number.isFinite(priceUsd)||priceUsd<=0||selectedFiles.length<1){
+    return showToast('toast_fill_data','error');
+  }
+  const oldHtml=btn?.innerHTML;
+  try{
+    if(btn){btn.disabled=true;btn.innerHTML=`<i class="fa-solid fa-spinner fa-spin"></i> ${currentLang==='ar'?'جارٍ نشر الإعلان...':'Publishing ad...'}`;}
+    const images=[];
+    for(const file of selectedFiles)images.push(await fileToUploadData(file));
+    const latitude=String(el('addLatitude')?.value||'').trim();
+    const longitude=String(el('addLongitude')?.value||'').trim();
+    await api('products',{method:'POST',headers:authHeaders(),body:JSON.stringify({
+      name,category,country,location,description,priceUsd,images,
+      attributes:collectAttributes(),
+      latitude:latitude===''?null:Number(latitude),longitude:longitude===''?null:Number(longitude)
+    })});
+    try{localStorage.removeItem(PRODUCTS_CACHE_KEY)}catch(_){ }
+    closeAddModal();
+    showToast('toast_success_add','success');
+    await Promise.allSettled([loadMyAds(),loadAllProducts(true)]);
+    nav('profile');
+  }catch(error){
+    console.error('publish product:',error);
+    showToast(friendlyDbError(error),'error');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML=oldHtml||t('publish_btn');}
+  }
+}
+
 function captureApproxLocation(){if(!navigator.geolocation)return showToast(currentLang==='ar'?'الموقع غير مدعوم.':'Location is not supported.','error');navigator.geolocation.getCurrentPosition(pos=>{const safe=offsetLocationKm(Number(pos.coords.latitude),Number(pos.coords.longitude),2);el('addLatitude').value=safe.lat.toFixed(5);el('addLongitude').value=safe.lng.toFixed(5);safeSetText('locationPrivacyNote',currentLang==='ar'?'تم حفظ نقطة تقريبية تبعد نحو 2 كم عن موقعك الدقيق.':'An approximate point about 2 km away from your exact location was saved.')},()=>showToast(currentLang==='ar'?'تعذر قراءة الموقع. يمكنك نشر الإعلان بدونه.':'Could not read your location. You can publish without it.','warning'),{enableHighAccuracy:false,timeout:10000,maximumAge:300000})}
 
 // Extend existing screens without changing Pi authentication or payment flows.
