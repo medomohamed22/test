@@ -7,6 +7,7 @@ const AUTH_TTL_MS = 24 * 60 * 60 * 1000;
 const PRODUCTS_CACHE_KEY = 'dealway_public_products_v2';
 let piAccessToken = null;
 let piInitialized = false;
+let piInitPromise = null;
 let loginInProgress = false;
 
 function savePiSession(accessToken) {
@@ -106,10 +107,36 @@ async function waitForPiSdk(timeoutMs = 10000) {
 }
 
 async function ensurePiInitialized() {
-  if (piInitialized) return window.Pi;
-  const pi = await waitForPiSdk();
-  await Promise.resolve(pi.init({ version: '2.0', sandbox: false }));
-  piInitialized = true;
+  if (piInitialized && window.Pi) return window.Pi;
+  if (piInitPromise) return piInitPromise;
+
+  piInitPromise = (async () => {
+    const pi = await waitForPiSdk();
+    await Promise.resolve(pi.init({ version: '2.0', sandbox: false }));
+    piInitialized = true;
+    return pi;
+  })();
+
+  try {
+    return await piInitPromise;
+  } catch (error) {
+    piInitialized = false;
+    throw error;
+  } finally {
+    piInitPromise = null;
+  }
+}
+
+async function ensurePiPaymentSession() {
+  const pi = await ensurePiInitialized();
+  const auth = await pi.authenticate(
+    ['username', 'payments'],
+    payment => console.warn('Incomplete Pi payment found:', payment?.identifier || payment)
+  );
+
+  if (!auth?.accessToken) throw new Error(currentLang === 'ar' ? 'تعذر تفعيل جلسة الدفع في Pi Browser.' : 'Could not activate the Pi payment session.');
+  piAccessToken = auth.accessToken;
+  savePiSession(piAccessToken);
   return pi;
 }
 
@@ -196,7 +223,20 @@ async function submitProduct(){
  try{const images=[];for(const file of selectedFiles){if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Object.assign(new Error(),{code:'IMAGE_TYPE'});const compressed=await imageCompression(file,{maxSizeMB:.8,maxWidthOrHeight:1600,useWebWorker:true,fileType:'image/jpeg',initialQuality:.88});images.push({data:await fileToDataUrl(compressed)})}btn.innerHTML=ar?'جاري الإرسال للمراجعة...':'Sending for review...';await api('products',{method:'POST',headers:authHeaders(),body:JSON.stringify({name,description,priceUsd:price,category,country,location,images})});showToast(ar?'تم إرسال الإعلان للمراجعة.':'Ad sent for review.','success');closeAddModal();await loadMyAds()}catch(e){showToast(friendlyDbError(e),'error')}finally{btn.disabled=false;btn.innerHTML=t('publish_btn')}}
 async function deleteProduct(id){if(!confirm(t('confirm_delete')))return;try{await api('products',{method:'DELETE',headers:authHeaders(),body:JSON.stringify({id})});await Promise.all([loadMyAds(),loadAllProducts()]);nav('home')}catch(e){showToast(e.message,'error')}}
 function openPromoteOptions(id){currentPromoteProductId=id;renderPromotionPlanPrices();el('promoteModal').style.display='flex'}function closePromoteModal(){el('promoteModal').style.display='none';currentPromoteProductId=null}function triggerPayment(_usd,_days,tier){if(!currentPromoteProductId)return;const id=currentPromoteProductId;closePromoteModal();promoteProduct(id,tier)}
-async function promoteProduct(productId,tier){if(!window.Pi||!user)return showToast('Pi Browser Required','error');const plan={1:1,2:5,3:10}[tier];try{await refreshPiPrice();const amount=Number((plan/piUsdPrice).toFixed(8));window.Pi.createPayment({amount,memo:`Promote Ad ${productId}`,metadata:{type:'promotion',productId:Number(productId),tier:Number(tier)}},{onReadyForServerApproval:async paymentId=>{await api('approve',{method:'POST',headers:authHeaders(),body:JSON.stringify({paymentId})})},onReadyForServerCompletion:async(paymentId,txid)=>{await api('complete',{method:'POST',headers:authHeaders(),body:JSON.stringify({paymentId,txid})});showToast('Promotion Active!','success');await loadAllProducts()},onCancel:()=>showToast('Payment Cancelled','warning'),onError:e=>showToast(e.message||'Payment Failed','error')})}catch(e){showToast(friendlyDbError(e),'error')}}
+async function promoteProduct(productId,tier){
+ if(!user)return showToast(currentLang==='ar'?'سجّل الدخول أولاً.':'Login first.','error');
+ const plan={1:1,2:5,3:10}[tier];
+ try{
+  const pi=await ensurePiPaymentSession();
+  await refreshPiPrice();
+  if(!piUsdPrice||piUsdPrice<=0)throw new Error(currentLang==='ar'?'تعذر تحديث سعر Pi. حاول مرة أخرى.':'Could not refresh the Pi price. Try again.');
+  const amount=Number((plan/piUsdPrice).toFixed(8));
+  await Promise.resolve(pi.createPayment({amount,memo:`Promote Ad ${productId}`,metadata:{type:'promotion',productId:Number(productId),tier:Number(tier)}},{onReadyForServerApproval:async paymentId=>{await api('approve',{method:'POST',headers:authHeaders(),body:JSON.stringify({paymentId})})},onReadyForServerCompletion:async(paymentId,txid)=>{await api('complete',{method:'POST',headers:authHeaders(),body:JSON.stringify({paymentId,txid})});showToast(currentLang==='ar'?'تم تمييز الإعلان بنجاح.':'Promotion activated!','success');await Promise.all([loadAllProducts(true),loadMyAds()])},onCancel:()=>showToast(currentLang==='ar'?'تم إلغاء الدفع.':'Payment cancelled.','warning'),onError:e=>showToast(e?.message||(currentLang==='ar'?'فشل الدفع.':'Payment failed.'),'error')}));
+ }catch(e){
+  console.error('Pi promotion payment failed:',e);
+  showToast(friendlyDbError(e),'error');
+ }
+}
 function openChatRoom(pid,otherId,pName,uName){if(!user)return showToast('toast_login_first','error');activeChat={pid,otherId};safeSetText('chatTitle',pName);safeSetText('chatPeer',uName);el('chatModal').style.display='flex';loadMessages();api('messages',{method:'PATCH',headers:authHeaders(),body:JSON.stringify({productId:pid,otherPiId:otherId})}).catch(()=>{})}
 async function loadMessages(){if(!activeChat)return;const d=await api(`messages?productId=${encodeURIComponent(activeChat.pid)}`,{headers:authHeaders(false)});el('msgContainer').innerHTML='';(d.messages||[]).filter(m=>(m.sender_pi_id===user.uid&&m.receiver_pi_id===activeChat.otherId)||(m.sender_pi_id===activeChat.otherId&&m.receiver_pi_id===user.uid)).forEach(renderMsg)}
 function renderMsg(m){const div=document.createElement('div');div.className=`bubble ${m.sender_pi_id===user.uid?'me':'other'}`;div.innerText=m.content;el('msgContainer').appendChild(div)}
@@ -204,4 +244,4 @@ async function sendMsg(){const inp=el('msgInput');if(!activeChat||!inp.value.tri
 function closeChat(){el('chatModal').style.display='none';activeChat=null}
 async function loadInbox(){if(!user)return;const list=el('inbox-list');try{const d=await api('messages',{headers:authHeaders(false)}),threads=new Map();(d.messages||[]).slice().reverse().forEach(m=>{const other=m.sender_pi_id===user.uid?m.receiver_pi_id:m.sender_pi_id,key=`${m.product_id}_${other}`;if(!threads.has(key))threads.set(key,{pid:m.product_id,otherId:other,pName:m.products?.name||'Item',last:m.content,name:m.sender_pi_id===other?m.sender_username:m.receiver_username,unread:!m.is_read&&m.receiver_pi_id===user.uid})});list.innerHTML=[...threads.values()].map(x=>`<div class="inbox-item ${x.unread?'unread':''}" onclick="openChatRoom(${x.pid},'${escapeAttr(x.otherId)}','${escapeAttr(x.pName)}','${escapeAttr(x.name)}')"><div class="inbox-info"><div class="inbox-name">${escapeHtml(x.name)}</div><div class="inbox-msg">${escapeHtml(x.last)}</div></div></div>`).join('')||`<div class="empty-state"><h3>${escapeHtml(t('no_messages'))}</h3></div>`}catch(e){list.innerHTML=`<p>${escapeHtml(e.message)}</p>`}}
 async function checkUnreadMessages(){if(!user)return;try{const d=await api('messages',{headers:authHeaders(false)}),count=(d.messages||[]).filter(m=>!m.is_read&&m.receiver_pi_id===user.uid).length,b=el('chat-badge');if(count){b.innerText=count>9?'+9':count;b.classList.remove('hidden')}else b.classList.add('hidden')}catch(_){}}
-let lastProductsRefresh=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-lastProductsRefresh>30000){lastProductsRefresh=Date.now();loadAllProducts(true).catch(()=>{})}});window.addEventListener('focus',()=>{if(Date.now()-lastProductsRefresh>30000){lastProductsRefresh=Date.now();loadAllProducts(true).catch(()=>{})}});document.addEventListener('DOMContentLoaded',()=>{updateLanguage();initDragAndDrop();initPi();refreshPiPrice();lastProductsRefresh=Date.now();loadAllProducts();initLocations();if(restorePiSession())handleLogin().catch(()=>clearPiSession())});setInterval(refreshPiPrice,60000);
+let lastProductsRefresh=0;document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-lastProductsRefresh>30000){lastProductsRefresh=Date.now();loadAllProducts(true).catch(()=>{})}});window.addEventListener('focus',()=>{if(Date.now()-lastProductsRefresh>30000){lastProductsRefresh=Date.now();loadAllProducts(true).catch(()=>{})}});document.addEventListener('DOMContentLoaded',()=>{updateLanguage();initDragAndDrop();initPi();ensurePiInitialized().catch(e=>console.warn('Pi SDK initialization deferred:',e?.message||e));refreshPiPrice();lastProductsRefresh=Date.now();loadAllProducts();initLocations();if(restorePiSession())handleLogin().catch(()=>clearPiSession())});setInterval(refreshPiPrice,60000);
