@@ -248,6 +248,26 @@ let lastProductsRefresh=0;document.addEventListener('visibilitychange',()=>{if(d
 
 function dealDialog({title,message='',input=false,inputValue='',confirmText,cancelText}={}){return new Promise(resolve=>{const modal=el('dealDialog'),inp=el('dealDialogInput'),ok=el('dealDialogConfirm'),cancel=el('dealDialogCancel');safeSetText('dealDialogTitle',title||'DealWay');safeSetText('dealDialogMessage',message);ok.textContent=confirmText||(currentLang==='ar'?'موافق':'Confirm');cancel.textContent=cancelText||(currentLang==='ar'?'إلغاء':'Cancel');inp.classList.toggle('hidden',!input);inp.value=inputValue||'';modal.style.display='flex';const finish=v=>{modal.style.display='none';ok.onclick=null;cancel.onclick=null;resolve(v)};ok.onclick=()=>finish(input?inp.value.trim():true);cancel.onclick=()=>finish(input?null:false);if(input)setTimeout(()=>inp.focus(),50)})}
 
+async function deleteProduct(productId){
+  if(!user)return showToast(t('toast_login_first'),'error');
+  const confirmed=await dealDialog({
+    title:currentLang==='ar'?'حذف الإعلان':'Delete ad',
+    message:currentLang==='ar'?'سيتم حذف الإعلان نهائيًا مع رسائله وبياناته المرتبطة. هل تريد المتابعة؟':'The ad and its related messages and data will be permanently deleted. Continue?',
+    confirmText:currentLang==='ar'?'حذف نهائي':'Delete permanently',
+    cancelText:currentLang==='ar'?'إلغاء':'Cancel'
+  });
+  if(!confirmed)return;
+  try{
+    await api('products',{method:'DELETE',headers:authHeaders(),body:JSON.stringify({id:Number(productId)})});
+    globalProducts=globalProducts.filter(p=>Number(p.id)!==Number(productId));
+    marketplaceState.favorites.delete(Number(productId));
+    showToast(currentLang==='ar'?'تم حذف الإعلان بنجاح.':'Ad deleted successfully.','success');
+    await Promise.allSettled([loadMyAds(),loadAllProducts(true),loadMarketplaceState()]);
+  }catch(e){
+    showToast(friendlyDbError(e),'error');
+  }
+}
+
 // ===== Marketplace feature pack =====
 let marketplaceState={favorites:new Set(),reviews:[],verification:{}};
 const CATEGORY_FIELDS={cars:[['brand','الماركة','Brand'],['model','الموديل','Model'],['year','السنة','Year'],['mileage','الكيلومترات','Mileage'],['transmission','ناقل الحركة','Transmission']],phones:[['brand','الشركة','Brand'],['storage','السعة','Storage'],['condition','الحالة','Condition'],['warranty','الضمان','Warranty']],electronics:[['brand','الماركة','Brand'],['condition','الحالة','Condition'],['warranty','الضمان','Warranty']],home:[['condition','الحالة','Condition'],['material','الخامة','Material']],fashion:[['size','المقاس','Size'],['condition','الحالة','Condition']]};
