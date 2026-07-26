@@ -25,14 +25,14 @@ module.exports=async(req,res)=>{try{
   if(req.method==='GET'){
     // Always validate against the database so a newly approved ad from a new country appears immediately.
     res.setHeader('Cache-Control','no-store, max-age=0');
-    const limit=Math.min(300,Math.max(1,Number(req.query?.limit)||200)),sort=SORTS[req.query?.sort]||SORTS.newest;
-    let q=sb.from('products').select('id,seller_pi_id,seller_username,name,description,category,country,location,price_usd,images,status,item_status,attributes,latitude,longitude,views,promoted_until,promotion_tier,bumped_at,created_at').eq('status','approved');
+    const limit=Math.min(50,Math.max(1,Number(req.query?.limit)||20)),offset=Math.max(0,Number(req.query?.offset)||0),sort=SORTS[req.query?.sort]||SORTS.newest;
+    let q=sb.from('products').select('id,seller_pi_id,seller_username,name,description,category,country,location,price_usd,images,status,item_status,attributes,latitude,longitude,views,promoted_until,promotion_tier,bumped_at,created_at,expires_at').eq('status','approved').or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
     if(req.query?.category)q=q.eq('category',String(req.query.category).slice(0,80));
     if(req.query?.country)q=q.eq('country',String(req.query.country).slice(0,100));
     if(req.query?.location)q=q.eq('location',String(req.query.location).slice(0,100));
-    q=q.order(sort[0],{ascending:sort[1],nullsFirst:false}).limit(limit);
+    q=q.order(sort[0],{ascending:sort[1],nullsFirst:false}).range(offset,offset+limit-1);
     const {data,error}=await q;if(error)throw error;
-    return res.json({products:await enrichSellerStats(data||[])});
+    return res.json({products:await enrichSellerStats(data||[]),offset,limit,hasMore:(data||[]).length===limit});
   }
   if(req.method==='POST'){
     res.setHeader('Cache-Control','no-store');

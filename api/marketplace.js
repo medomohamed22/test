@@ -41,6 +41,15 @@ if(req.method==='PATCH'&&action==='status'){
 if(req.method==='POST'&&action==='event'){
  const id=Number(b.productId),type=String(b.eventType);if(!Number.isInteger(id)||!['view','chat','contact','share','favorite'].includes(type))fail('Invalid event','EVENT_INVALID');const {error}=await sb.from('product_events').insert({product_id:id,actor_pi_id:u.uid,event_type:type});if(error)throw error;return res.json({success:true})
 }
+if(req.method==='GET'&&action==='notifications'){
+ const {data,error}=await sb.from('notifications').select('id,type,title_ar,title_en,body_ar,body_en,product_id,is_read,created_at').eq('user_pi_id',u.uid).order('created_at',{ascending:false}).limit(100);if(error)throw error;return res.json({notifications:data||[]})
+}
+if(req.method==='POST'&&action==='notification-read'){
+ const id=Number(b.id);let q=sb.from('notifications').update({is_read:true}).eq('user_pi_id',u.uid);if(Number.isInteger(id))q=q.eq('id',id);const {error}=await q;if(error)throw error;return res.json({success:true})
+}
+if(req.method==='POST'&&action==='client-error'){
+ const message=text(b.message||'Unknown error',1,500,'message'),source=text(b.source||'frontend',1,80,'source');await sb.from('app_error_logs').insert({user_pi_id:u.uid,source,code:String(b.code||'').slice(0,80),message,details:b.details&&typeof b.details==='object'?b.details:{}});return res.json({success:true})
+}
 if(req.method==='GET'&&action==='analytics'){
  const {data:products,error:pe}=await sb.from('products').select('id,name,views,status,promoted_until').eq('seller_pi_id',u.uid);if(pe)throw pe;const ids=(products||[]).map(x=>x.id);let events=[];if(ids.length){const r=await sb.from('product_events').select('product_id,event_type,created_at').in('product_id',ids);if(r.error)throw r.error;events=r.data||[]}const by={};for(const e of events){by[e.product_id]||={favorite:0,chat:0,contact:0,share:0,view:0};by[e.product_id][e.event_type]=(by[e.product_id][e.event_type]||0)+1}return res.json({products:(products||[]).map(p=>({...p,events:by[p.id]||{favorite:0,chat:0,contact:0,share:0,view:0}}))})
 }
