@@ -25,21 +25,13 @@ if(req.method==='GET'&&action==='seller'){
 if(req.method==='POST'&&action==='favorite'){
  const id=Number(b.productId);if(!Number.isInteger(id))fail('Invalid product','PRODUCT_ID_INVALID');const {data:product,error:productError}=await sb.from('products').select('id,status').eq('id',id).maybeSingle();if(productError)throw productError;if(!product||product.status!=='approved')fail('Product is unavailable','PRODUCT_UNAVAILABLE',404);if(b.remove){const {error}=await sb.from('favorites').delete().eq('user_pi_id',u.uid).eq('product_id',id);if(error)throw error}else{const {error}=await sb.from('favorites').upsert({user_pi_id:u.uid,product_id:id},{onConflict:'user_pi_id,product_id'});if(error)throw error;await sb.from('product_events').insert({product_id:id,actor_pi_id:u.uid,event_type:'favorite'})}return res.json({success:true})
 }
-if(req.method==='POST'&&action==='saved-search'){
- const filters=b.filters&&typeof b.filters==='object'?b.filters:{};const name=text(b.name||'Saved search',2,80,'name');const {data,error}=await sb.from('saved_searches').insert({user_pi_id:u.uid,name,filters}).select().single();if(error)throw error;return res.status(201).json({savedSearch:data})
-}
-if(req.method==='DELETE'&&action==='saved-search'){
- const id=Number(b.id);const {error}=await sb.from('saved_searches').delete().eq('id',id).eq('user_pi_id',u.uid);if(error)throw error;return res.json({success:true})
-}
+
+
 if(req.method==='POST'&&action==='review'){
  const productId=Number(b.productId),rating=Number(b.rating);if(!Number.isInteger(productId)||rating<1||rating>5)fail('Invalid review','REVIEW_INVALID');const {data:p,error:pe}=await sb.from('products').select('seller_pi_id,status,item_status').eq('id',productId).maybeSingle();if(pe)throw pe;if(!p||p.item_status!=='sold')fail('Reviews are available after the item is sold','REVIEW_NOT_ALLOWED');if(p.seller_pi_id===u.uid)fail('You cannot review yourself','REVIEW_SELF');const comment=text(b.comment||'',0,500,'comment');const {data,error}=await sb.from('reviews').upsert({product_id:productId,reviewer_pi_id:u.uid,reviewer_username:u.username,seller_pi_id:p.seller_pi_id,rating,comment},{onConflict:'product_id,reviewer_pi_id'}).select().single();if(error)throw error;return res.json({review:data})
 }
-if(req.method==='POST'&&action==='report'){
- const target=text(b.targetPiId,1,128,'target'),reason=text(b.reason,3,80,'reason'),details=text(b.details||'',0,800,'details');const productId=b.productId?Number(b.productId):null;if(target===u.uid)fail('Invalid report','REPORT_INVALID');const {error}=await sb.from('reports').insert({reporter_pi_id:u.uid,target_pi_id:target,product_id:Number.isInteger(productId)?productId:null,reason,details});if(error)throw error;return res.status(201).json({success:true})
-}
-if(req.method==='POST'&&action==='block'){
- const target=text(b.targetPiId,1,128,'target');if(target===u.uid)fail('Invalid block','BLOCK_INVALID');if(b.remove){const {error}=await sb.from('user_blocks').delete().eq('blocker_pi_id',u.uid).eq('blocked_pi_id',target);if(error)throw error}else{const {error}=await sb.from('user_blocks').upsert({blocker_pi_id:u.uid,blocked_pi_id:target},{onConflict:'blocker_pi_id,blocked_pi_id'});if(error)throw error}return res.json({success:true})
-}
+
+
 if(req.method==='POST'&&action==='verification'){
  const rawPhone=text(b.phone||'',6,24,'phone');const phone=rawPhone.replace(/[\s().-]/g,'');if(!/^\+?\d{6,15}$/.test(phone))fail('Enter a valid phone number using digits only','PHONE_INVALID');const evidence=`telegram_phone:${phone}`;const {error}=await sb.from('verification_requests').insert({user_pi_id:u.uid,requested_level:'phone',evidence,phone,status:'pending'});if(error)throw error;await sb.from('app_users').update({verification_status:'pending',verification_phone:phone}).eq('pi_uid',u.uid);return res.status(201).json({success:true})
 }
