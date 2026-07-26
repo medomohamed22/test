@@ -59,21 +59,35 @@ async function parseApiResponse(res) {
 }
 
 async function api(path, options = {}) {
+  const controller = new AbortController();
+  const timeoutMs = Number(options.timeoutMs || 15000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = options.signal;
+  if (externalSignal) externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
   const requestOptions = {
     credentials: 'omit',
     cache: 'no-store',
     redirect: 'error',
     ...options,
+    signal: controller.signal,
   };
-
-  let res = await fetch(`/api/${path}`, requestOptions);
-
-  // Some manual Vercel uploads can temporarily expose the physical .js route.
-  // This fallback avoids breaking Pi login while the canonical /api route is restored.
-  if (res.status === 404 && !path.includes('?') && !path.endsWith('.js')) {
-    res = await fetch(`/api/${path}.js`, requestOptions);
+  delete requestOptions.timeoutMs;
+  try {
+    let res = await fetch(`/api/${path}`, requestOptions);
+    if (res.status === 404 && !path.includes('?') && !path.endsWith('.js')) {
+      res = await fetch(`/api/${path}.js`, requestOptions);
+    }
+    return await parseApiResponse(res);
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error(currentLang === 'ar' ? 'استغرق تحميل البيانات وقتًا طويلًا. حاول مرة أخرى.' : 'Loading took too long. Please retry.');
+      timeoutError.code = 'REQUEST_TIMEOUT';
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  return parseApiResponse(res);
 }
 
 function friendlyDbError(error) {
@@ -206,7 +220,46 @@ async function handleLogin() {
 
 async function refreshTelegramButton(showErrors=false){const btn=el('telegramLinkBtn'),txt=el('telegramLinkText');if(!btn||!txt||!user)return;try{const d=await api('telegram-link',{headers:authHeaders(false)});btn.disabled=d.linked;btn.classList.toggle('btn-disabled',d.linked);txt.innerText=d.linked?(currentLang==='ar'?'تم الربط':'Linked'):(currentLang==='ar'?'ربط بوت تيليجرام':'Link Telegram Bot')}catch(e){if(showErrors)showToast(e.message,'error')}}
 async function linkTelegramBot(){if(!user)return showToast('toast_login_first','error');try{const d=await api('telegram-link',{method:'POST',headers:authHeaders(),body:'{}'});openTelegramExternal(BOT_USERNAME,d.token);if(telegramCheckTimer)clearInterval(telegramCheckTimer);telegramCheckTimer=setInterval(()=>refreshTelegramButton(false),2500)}catch(e){showToast(e.message,'error')}}
-async function loadAllProducts(forceFresh=false){productPageOffset=0;productsHasMore=true;if(forceFresh)globalProducts=[];el('loading').style.display='block';try{const d=await api(`public-products?limit=${PRODUCT_PAGE_SIZE}&offset=0&t=${Date.now()}`);globalProducts=d.products||[];productPageOffset=globalProducts.length;productsHasMore=Boolean(d.hasMore);populateProductLocations();renderProducts();const btn=el('loadMoreBtn');if(btn)btn.style.display=productsHasMore?'block':'none';openProductFromUrlOnce()}catch(e){safeSetHtml('products-list',`<div class="empty-state" style="grid-column:1/-1"><h3>${currentLang==='ar'?'خطأ':'Error'}</h3><p>${escapeHtml(e.message)}</p></div>`)}finally{el('loading').style.display='none'}}
+let productsLoadSequence=0;
+async function loadAllProducts(forceFresh=false){
+  const sequence=++productsLoadSequence;
+  productPageOffset=0;
+  productsHasMore=true;
+  const loading=el('loading');
+  if(loading)loading.style.display='block';
+  const cached=readProductsCache();
+  if(!forceFresh&&cached?.length){
+    globalProducts=cached;
+    populateProductLocations();
+    renderProducts();
+  }
+  try{
+    const d=await api(`public-products?limit=${PRODUCT_PAGE_SIZE}&offset=0&t=${Date.now()}`,{timeoutMs:18000});
+    if(sequence!==productsLoadSequence)return;
+    globalProducts=Array.isArray(d.products)?d.products:[];
+    writeProductsCache(globalProducts);
+    productPageOffset=globalProducts.length;
+    productsHasMore=Boolean(d.hasMore);
+    populateProductLocations();
+    renderProducts();
+    const btn=el('loadMoreBtn');
+    if(btn)btn.style.display=productsHasMore?'block':'none';
+    openProductFromUrlOnce();
+  }catch(e){
+    if(sequence!==productsLoadSequence)return;
+    if(!globalProducts.length&&cached?.length){
+      globalProducts=cached;
+      populateProductLocations();
+      renderProducts();
+      showToast(currentLang==='ar'?'تم عرض آخر نسخة محفوظة من الإعلانات.':'Showing the last saved ads.','warning');
+    }else if(!globalProducts.length){
+      safeSetHtml('products-list',`<div class="empty-state" style="grid-column:1/-1"><h3>${currentLang==='ar'?'تعذر تحميل الإعلانات':'Could not load ads'}</h3><p>${escapeHtml(friendlyDbError(e))}</p><button class="btn btn-primary" style="margin-top:12px" onclick="loadAllProducts(true)">${currentLang==='ar'?'إعادة المحاولة':'Retry'}</button></div>`);
+    }
+    console.error('loadAllProducts:',e);
+  }finally{
+    if(sequence===productsLoadSequence&&loading)loading.style.display='none';
+  }
+}
 async function loadMoreProducts(){if(!productsHasMore)return;const btn=el('loadMoreBtn');if(btn){btn.disabled=true;btn.textContent=currentLang==='ar'?'جاري التحميل...':'Loading...'}try{const d=await api(`public-products?limit=${PRODUCT_PAGE_SIZE}&offset=${productPageOffset}&t=${Date.now()}`);const seen=new Set(globalProducts.map(p=>String(p.id)));for(const p of d.products||[])if(!seen.has(String(p.id)))globalProducts.push(p);productPageOffset+=Number((d.products||[]).length);productsHasMore=Boolean(d.hasMore);populateProductLocations();renderProducts()}catch(e){showToast(e.message,'error')}finally{if(btn){btn.disabled=false;btn.textContent=t('load_more');btn.style.display=productsHasMore?'block':'none'}}}
 
 function formatPromotionEndDate(value){if(!value)return '';const d=new Date(value);if(Number.isNaN(d.getTime()))return '';return new Intl.DateTimeFormat(currentLang==='ar'?'ar-EG':'en-US',{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(d)}
