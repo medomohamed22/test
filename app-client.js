@@ -187,10 +187,19 @@ async function handleLogin() {
     el('profile-user').classList.remove('hidden');
     safeSetText('p-username', user.username);
     await refreshTelegramButton();
-    await Promise.all([loadMyAds(), loadInbox(), checkUnreadMessages(), loadMarketplaceState()]);
+    const secondaryLoads = [
+      ['ads', () => loadMyAds()],
+      ['inbox', () => loadInbox()],
+      ['unread', () => checkUnreadMessages()],
+      ['marketplace', () => loadMarketplaceState()],
+    ];
+    await Promise.allSettled(secondaryLoads.map(async ([name, task]) => {
+      try { await task(); } catch (error) { console.error(`Failed to load ${name}:`, error); }
+    }));
     setInterval(checkUnreadMessages, 10000);
   } catch (e) {
-    piAccessToken = null;
+    // Only invalidate the cached token when Pi/session authentication itself failed.
+    if (e?.status === 401 || e?.code === 'PI_TOKEN_INVALID' || e?.code === 'PI_TOKEN_MISSING') clearPiSession();
     showToast(friendlyDbError(e), 'error');
   }
 }
@@ -199,6 +208,33 @@ async function refreshTelegramButton(showErrors=false){const btn=el('telegramLin
 async function linkTelegramBot(){if(!user)return showToast('toast_login_first','error');try{const d=await api('telegram-link',{method:'POST',headers:authHeaders(),body:'{}'});openTelegramExternal(BOT_USERNAME,d.token);if(telegramCheckTimer)clearInterval(telegramCheckTimer);telegramCheckTimer=setInterval(()=>refreshTelegramButton(false),2500)}catch(e){showToast(e.message,'error')}}
 async function loadAllProducts(forceFresh=false){productPageOffset=0;productsHasMore=true;if(forceFresh)globalProducts=[];el('loading').style.display='block';try{const d=await api(`public-products?limit=${PRODUCT_PAGE_SIZE}&offset=0&t=${Date.now()}`);globalProducts=d.products||[];productPageOffset=globalProducts.length;productsHasMore=Boolean(d.hasMore);populateProductLocations();renderProducts();const btn=el('loadMoreBtn');if(btn)btn.style.display=productsHasMore?'block':'none';openProductFromUrlOnce()}catch(e){safeSetHtml('products-list',`<div class="empty-state" style="grid-column:1/-1"><h3>${currentLang==='ar'?'خطأ':'Error'}</h3><p>${escapeHtml(e.message)}</p></div>`)}finally{el('loading').style.display='none'}}
 async function loadMoreProducts(){if(!productsHasMore)return;const btn=el('loadMoreBtn');if(btn){btn.disabled=true;btn.textContent=currentLang==='ar'?'جاري التحميل...':'Loading...'}try{const d=await api(`public-products?limit=${PRODUCT_PAGE_SIZE}&offset=${productPageOffset}&t=${Date.now()}`);const seen=new Set(globalProducts.map(p=>String(p.id)));for(const p of d.products||[])if(!seen.has(String(p.id)))globalProducts.push(p);productPageOffset+=Number((d.products||[]).length);productsHasMore=Boolean(d.hasMore);populateProductLocations();renderProducts()}catch(e){showToast(e.message,'error')}finally{if(btn){btn.disabled=false;btn.textContent=t('load_more');btn.style.display=productsHasMore?'block':'none'}}}
+
+async function loadMyAds(){
+  if(!user)return;
+  const list=el('my-ads-list');
+  if(!list)return;
+  try{
+    const d=await api('products',{headers:authHeaders(false)}),products=d.products||[];
+    safeSetText('stat-ads',products.length);
+    safeSetText('stat-views',formatCurrency(products.reduce((sum,p)=>sum+Number(p.views||0),0)));
+    const now=Date.now(), ar=currentLang==='ar';
+    list.innerHTML=products.map(p=>{
+      const img=p.images?.[0]||'https://placehold.co/400x400/f1f5f9/94a3b8?text=No+Image';
+      const promotionEnd=p.promoted_until?new Date(p.promoted_until).getTime():0;
+      const isPromoted=Number.isFinite(promotionEnd)&&promotionEnd>now;
+      const expiresAt=p.expires_at?new Date(p.expires_at).getTime():0;
+      const isExpired=Boolean(expiresAt&&expiresAt<=now);
+      const reviewState=p.status==='pending'?(ar?'قيد المراجعة':'Pending review'):p.status==='rejected'?(ar?'مرفوض':'Rejected'):p.status==='hidden'?(ar?'مخفي بواسطة الإدارة':'Hidden by admin'):(ar?'مقبول':'Approved');
+      const reason=p.status==='rejected'&&p.rejection_reason?`<div style="margin-top:8px;padding:9px;border-radius:10px;background:#fef2f2;color:#b91c1c;font-size:12px">${escapeHtml(ar?'سبب الرفض: ':'Reason: ')}${escapeHtml(p.rejection_reason)}</div>`:'';
+      const promotionInfo=isPromoted?`<div style="width:100%;margin-top:6px;padding:8px 10px;border-radius:10px;background:#fffbeb;border:1px solid #facc15;color:#854d0e;font-size:11px;font-weight:800;line-height:1.6"><i class="fa-solid fa-crown"></i> ${escapeHtml(ar?'إعلان مميز':'Promoted ad')}<br><i class="fa-regular fa-clock"></i> ${escapeHtml(ar?'ينتهي':'Ends')}: ${escapeHtml(formatPromotionEndDate(p.promoted_until))}</div>`:'';
+      const expiryInfo=p.expires_at?`<div style="margin-top:6px;font-size:11px;color:${isExpired?'#b91c1c':'var(--text-muted)'}">${escapeHtml(isExpired?(ar?'انتهت صلاحية الإعلان':'Ad expired'):(ar?'ينتهي الإعلان: ':'Ad expires: '))}${!isExpired?escapeHtml(new Date(p.expires_at).toLocaleString(ar?'ar-EG':'en-US')):''}</div>`:'';
+      return `<div class="card ${isPromoted?'promoted':''}"><div onclick="openProductDetails(${Number(p.id)})"><div class="card-img-wrap">${isPromoted?`<div class="promo-badge promo-tier-${Math.min(3,Math.max(1,getPromotionLevel(p)))}"><i class="fa-solid fa-crown"></i> ${escapeHtml(t('promoted_badge'))}</div>`:''}<img src="${escapeAttr(img)}" class="card-img" loading="lazy" decoding="async"></div><div class="card-body"><div class="card-title">${escapeHtml(p.name)}</div><div>${escapeHtml(reviewState)}</div>${promotionInfo}${expiryInfo}${reason}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap;padding:0 12px 12px">${isExpired?`<button class="btn btn-primary" style="flex:1;padding:9px" onclick="event.stopPropagation();renewProduct(${Number(p.id)})">${escapeHtml(ar?'تجديد بـ Pi':'Renew with Pi')}</button>`:''}<button class="btn btn-danger" style="flex:1;padding:9px" onclick="event.stopPropagation();deleteProduct(${Number(p.id)})">${escapeHtml(t('delete_btn'))}</button></div></div>`;
+    }).join('')||`<div class="empty-state"><h3>${escapeHtml(t('no_products'))}</h3></div>`;
+  }catch(e){
+    list.innerHTML=`<div class="empty-state"><p>${escapeHtml(friendlyDbError(e))}</p></div>`;
+    throw e;
+  }
+}
 function chatErrorMessage(error){const code=String(error?.code||'');if(code==='PRODUCT_UNAVAILABLE')return currentLang==='ar'?'هذا الإعلان غير متاح حاليًا.':'This ad is currently unavailable.';if(code==='INVALID_CHAT_TARGET')return currentLang==='ar'?'تعذر بدء المحادثة مع هذا المستخدم.':'Could not start a conversation with this user.';return friendlyDbError(error)||(currentLang==='ar'?'تعذر تحميل المحادثة.':'Could not load the conversation.')}
 function openChatRoom(pid,otherId,pName,uName){if(!user)return showToast(t('toast_login_first'),'error');activeChat={pid:Number(pid),otherId:String(otherId)};safeSetText('chatTitle',pName||(currentLang==='ar'?'محادثة':'Chat'));safeSetText('chatPeer',uName||(currentLang==='ar'?'المستخدم':'User'));el('chatModal').style.display='flex';const box=el('msgContainer');if(box)box.innerHTML=`<div class="empty-state"><p>${currentLang==='ar'?'جاري تحميل الرسائل...':'Loading messages...'}</p></div>`;loadMessages().catch(e=>{if(box)box.innerHTML=`<div class="empty-state"><p>${escapeHtml(chatErrorMessage(e))}</p></div>`});api('messages',{method:'PATCH',headers:authHeaders(),body:JSON.stringify({productId:Number(pid),otherPiId:String(otherId)})}).catch(()=>{})}
 async function loadMessages(){if(!activeChat||!user)return;const d=await api(`messages?productId=${encodeURIComponent(activeChat.pid)}`,{headers:authHeaders(false)}),messages=(d.messages||[]).filter(m=>(m.sender_pi_id===user.uid&&m.receiver_pi_id===activeChat.otherId)||(m.sender_pi_id===activeChat.otherId&&m.receiver_pi_id===user.uid)),box=el('msgContainer');box.innerHTML='';messages.forEach(renderMsg);if(!messages.length)box.innerHTML=`<div class="empty-state"><p>${currentLang==='ar'?'ابدأ المحادثة بإرسال أول رسالة.':'Start the conversation by sending the first message.'}</p></div>`;box.scrollTop=box.scrollHeight}
