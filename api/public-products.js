@@ -1,9 +1,24 @@
 'use strict';
 const {createClient}=require('@supabase/supabase-js');
 
-const sb=createClient(process.env.SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{
-  auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}
-});
+function getSupabaseServerConfig(){
+  const url=String(process.env.SUPABASE_URL||'').trim();
+  const key=String(process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SERVICE_KEY||'').trim();
+  if(!url||!key)throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  // Legacy Supabase service keys are JWTs. Reject an anon JWT when it is accidentally pasted in Vercel.
+  const parts=key.split('.');
+  if(parts.length===3){
+    try{
+      const payload=JSON.parse(Buffer.from(parts[1].replace(/-/g,'+').replace(/_/g,'/'),'base64').toString('utf8'));
+      if(payload?.role&&payload.role!=='service_role')throw new Error('SUPABASE_SERVICE_ROLE_KEY is not a service_role key');
+    }catch(error){
+      if(String(error.message).includes('not a service_role'))throw error;
+    }
+  }
+  return {url,key};
+}
+const supabaseConfig=getSupabaseServerConfig();
+const sb=createClient(supabaseConfig.url,supabaseConfig.key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 
 const SORTS={
   newest:(a,b)=>dateValue(b.created_at)-dateValue(a.created_at)||Number(b.id||0)-Number(a.id||0),
