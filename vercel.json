@@ -48,14 +48,6 @@
           "value": "camera=(), microphone=(), geolocation=(self)"
         },
         {
-          "key": "X-Frame-Options",
-          "value": "SAMEORIGIN"
-        },
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
-        },
-        {
           "key": "X-DNS-Prefetch-Control",
           "value": "on"
         }
