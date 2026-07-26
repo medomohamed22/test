@@ -94,7 +94,7 @@ async function countRows(table, filter) {
 async function getDashboard() {
   const [pendingResult, usersResult, paymentsResult] = await Promise.all([
     safeQuery('الإعلانات المعلقة', sb.from('products').select('*').eq('status', 'pending').order('created_at', { ascending: true }).limit(200), []),
-    safeQuery('المستخدمون', sb.from('app_users').select('pi_uid,username,role,is_banned,telegram_chat_id,telegram_username,created_at').order('created_at', { ascending: false }).limit(500), []),
+    safeQuery('المستخدمون', sb.from('app_users').select('pi_uid,username,role,is_banned,telegram_chat_id,telegram_username,verification_status,verification_level,verification_phone,created_at').order('created_at', { ascending: false }).limit(500), []),
     safeQuery('المدفوعات', sb.from('payments').select('payment_id,user_id,product_id,amount_pi,amount_usd,tier,days,status,txid,completed_at,created_at').order('created_at', { ascending: false }).limit(250), []),
   ]);
 
@@ -172,9 +172,17 @@ module.exports = async (req, res) => {
         if (!target) throw httpError('المستخدم غير موجود', 404, 'USER_NOT_FOUND');
         if (target.role === 'admin') throw httpError('لا يمكن حظر حساب أدمن من هذه الواجهة', 403, 'CANNOT_BAN_ADMIN');
         const nextBanned = action === 'ban_user';
-        const { data, error } = await sb.from('app_users').update({ is_banned: nextBanned }).eq('pi_uid', piUid).select('pi_uid,username,role,is_banned,telegram_chat_id,telegram_username,created_at').single();
+        const { data, error } = await sb.from('app_users').update({ is_banned: nextBanned }).eq('pi_uid', piUid).select('pi_uid,username,role,is_banned,telegram_chat_id,telegram_username,verification_status,verification_level,verification_phone,created_at').single();
         if (error) throw httpError(error.message, 500, 'USER_BAN_UPDATE_FAILED');
         return res.status(200).json({ user: data, message: nextBanned ? 'تم حظر المستخدم' : 'تم فك حظر المستخدم' });
+      }
+
+      if (action === 'verify_user' || action === 'unverify_user') {
+        const piUid=String(body.piUid||'').trim();if(!piUid)throw httpError('معرّف المستخدم غير صالح');const verified=action==='verify_user';
+        const {data,error}=await sb.from('app_users').update({verification_status:verified?'verified':'unverified',verification_level:verified?'phone':'none'}).eq('pi_uid',piUid).select('pi_uid,username,role,is_banned,telegram_chat_id,telegram_username,verification_status,verification_level,verification_phone,created_at').single();
+        if(error)throw httpError(error.message,500,'VERIFY_UPDATE_FAILED');
+        await sb.from('verification_requests').update({status:verified?'approved':'rejected',reviewed_at:new Date().toISOString()}).eq('user_pi_id',piUid).eq('status','pending');
+        return res.status(200).json({user:data,message:verified?'تم توثيق التاجر':'تم إلغاء توثيق التاجر'});
       }
 
       const id = Number(body.id);

@@ -13,7 +13,7 @@ if(req.method==='GET'&&action==='dashboard'){
   sb.from('saved_searches').select('*').eq('user_pi_id',u.uid).order('created_at',{ascending:false}),
   sb.from('user_blocks').select('blocked_pi_id,created_at').eq('blocker_pi_id',u.uid),
   sb.from('reviews').select('id,rating,comment,created_at,reviewer_username,seller_pi_id,product_id').or(`reviewer_pi_id.eq.${u.uid},seller_pi_id.eq.${u.uid}`).order('created_at',{ascending:false}).limit(100),
-  sb.from('app_users').select('verification_level,verification_status,created_at').eq('pi_uid',u.uid).maybeSingle()
+  sb.from('app_users').select('verification_level,verification_status,verification_phone,created_at').eq('pi_uid',u.uid).maybeSingle()
  ]);for(const x of [fav,saved,blocks,reviews,verification])if(x.error)throw x.error;
  return res.json({favorites:fav.data||[],savedSearches:saved.data||[],blocks:blocks.data||[],reviews:reviews.data||[],verification:verification.data||{}})
 }
@@ -25,7 +25,7 @@ if(req.method==='GET'&&action==='seller'){
  ]);if(profile.error||reviews.error||counts.error)throw(profile.error||reviews.error||counts.error);const arr=reviews.data||[],avg=arr.length?arr.reduce((s,x)=>s+Number(x.rating||0),0)/arr.length:0;return res.json({profile:profile.data,reviews:arr,ratingAverage:avg,ratingCount:arr.length,adsCount:counts.count||0})
 }
 if(req.method==='POST'&&action==='favorite'){
- const id=Number(b.productId);if(!Number.isInteger(id))fail('Invalid product','PRODUCT_ID_INVALID');if(b.remove){const {error}=await sb.from('favorites').delete().eq('user_pi_id',u.uid).eq('product_id',id);if(error)throw error}else{const {error}=await sb.from('favorites').upsert({user_pi_id:u.uid,product_id:id},{onConflict:'user_pi_id,product_id'});if(error)throw error;await sb.from('product_events').insert({product_id:id,actor_pi_id:u.uid,event_type:'favorite'})}return res.json({success:true})
+ const id=Number(b.productId);if(!Number.isInteger(id))fail('Invalid product','PRODUCT_ID_INVALID');const {data:product,error:productError}=await sb.from('products').select('id,status').eq('id',id).maybeSingle();if(productError)throw productError;if(!product||product.status!=='approved')fail('Product is unavailable','PRODUCT_UNAVAILABLE',404);if(b.remove){const {error}=await sb.from('favorites').delete().eq('user_pi_id',u.uid).eq('product_id',id);if(error)throw error}else{const {error}=await sb.from('favorites').upsert({user_pi_id:u.uid,product_id:id},{onConflict:'user_pi_id,product_id'});if(error)throw error;await sb.from('product_events').insert({product_id:id,actor_pi_id:u.uid,event_type:'favorite'})}return res.json({success:true})
 }
 if(req.method==='POST'&&action==='saved-search'){
  const filters=b.filters&&typeof b.filters==='object'?b.filters:{};const name=text(b.name||'Saved search',2,80,'name');const {data,error}=await sb.from('saved_searches').insert({user_pi_id:u.uid,name,filters}).select().single();if(error)throw error;return res.status(201).json({savedSearch:data})
@@ -43,7 +43,7 @@ if(req.method==='POST'&&action==='block'){
  const target=text(b.targetPiId,1,128,'target');if(target===u.uid)fail('Invalid block','BLOCK_INVALID');if(b.remove){const {error}=await sb.from('user_blocks').delete().eq('blocker_pi_id',u.uid).eq('blocked_pi_id',target);if(error)throw error}else{const {error}=await sb.from('user_blocks').upsert({blocker_pi_id:u.uid,blocked_pi_id:target},{onConflict:'blocker_pi_id,blocked_pi_id'});if(error)throw error}return res.json({success:true})
 }
 if(req.method==='POST'&&action==='verification'){
- const level=['phone','identity','business'].includes(b.level)?b.level:'phone';const evidence=text(b.evidence||'',3,300,'evidence');const {error}=await sb.from('verification_requests').insert({user_pi_id:u.uid,requested_level:level,evidence,status:'pending'});if(error)throw error;await sb.from('app_users').update({verification_status:'pending'}).eq('pi_uid',u.uid);return res.status(201).json({success:true})
+ const phone=text(b.phone||'',8,24,'phone');if(!/^\+[1-9]\d{7,14}$/.test(phone))fail('Use an international phone number such as +201xxxxxxxxx','PHONE_INVALID');const evidence=`telegram_phone:${phone}`;const {error}=await sb.from('verification_requests').insert({user_pi_id:u.uid,requested_level:'phone',evidence,phone,status:'pending'});if(error)throw error;await sb.from('app_users').update({verification_status:'pending',verification_phone:phone}).eq('pi_uid',u.uid);return res.status(201).json({success:true})
 }
 if(req.method==='PATCH'&&action==='status'){
  const id=Number(b.productId),status=String(b.status);if(!['approved','reserved','sold','expired'].includes(status))fail('Invalid status','STATUS_INVALID');await ownedProduct(id,u.uid);const patch={item_status:status,updated_at:new Date().toISOString()};if(status==='sold')patch.sold_at=new Date().toISOString();const {error}=await sb.from('products').update(patch).eq('id',id).eq('seller_pi_id',u.uid);if(error)throw error;return res.json({success:true})
