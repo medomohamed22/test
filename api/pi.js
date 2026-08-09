@@ -23,3 +23,16 @@ export const getPiPayment = id => piFetch(`/payments/${id}`, { headers: serverHe
 export const approvePiPayment = id => piFetch(`/payments/${id}/approve`, { method: 'POST', headers: serverHeaders(), body: '{}' });
 export const completePiPayment = (id, txid) => piFetch(`/payments/${id}/complete`, { method: 'POST', headers: serverHeaders(), body: JSON.stringify({ txid }) });
 export const cancelPiPayment = id => piFetch(`/payments/${id}/cancel`, { method: 'POST', headers: serverHeaders(), body: '{}' });
+
+// Pi Browser in-app notifications. The official Pi demo forwards this payload to
+// POST /v2/in_app_notifications/notify using the app API key on the server.
+export const sendPiInAppNotifications = notifications => {
+  if (!Array.isArray(notifications) || notifications.length === 0) {
+    throw new Error('notifications array is required');
+  }
+  return piFetch('/in_app_notifications/notify', {
+    method: 'POST',
+    headers: serverHeaders(),
+    body: JSON.stringify({ notifications })
+  });
+};
