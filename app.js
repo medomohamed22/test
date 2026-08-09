@@ -231,6 +231,7 @@ app.patch('/api/me', auth, safe(async (req, res) => {
 
 app.get('/api/categories', safe(async (_req, res) => {
   const out = await many(db.from('categories').select('*').eq('is_active', true).order('sort_order'));
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800');
   res.json(out.data);
 }));
 app.get('/api/settings', safe(async (_req, res) => {
@@ -259,6 +260,7 @@ app.get('/api/listings', safe(async (req, res) => {
   const out = await many(query.range(from, from + limitNum - 1));
   out.data = await attachListingRelations(out.data);
   try { const rate = await getPiUsdRate(); out.data = out.data.map(row => withLivePiPrice(row, rate)); } catch (e) { console.warn('[OKX price]', e.message); }
+  res.setHeader('Cache-Control', 'public, s-maxage=15, stale-while-revalidate=45');
   res.json(out);
 }));
 app.get('/api/listings/:id', safe(async (req, res) => {
