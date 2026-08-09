@@ -3,6 +3,8 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
+import multer from 'multer';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { z, ZodError } from 'zod';
 import { db, one, many, assertDatabaseConfigured } from './api/db.js';
@@ -17,6 +19,37 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(express.json({ limit: '2mb' }));
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { files: 3, fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = ['image/jpeg','image/png','image/webp'].includes(file.mimetype);
+    cb(ok ? null : new Error('نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WebP فقط.'), ok);
+  }
+});
+
+let piMarketCache = { price: null, at: 0 };
+async function getPiUsdRate() {
+  const now = Date.now();
+  if (piMarketCache.price && now - piMarketCache.at < 30_000) return piMarketCache.price;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const r = await fetch('https://www.okx.com/api/v5/market/ticker?instId=PI-USDT', { signal: controller.signal, headers: { 'User-Agent': 'DealWay/1.2' } });
+    if (!r.ok) throw new Error(`OKX HTTP ${r.status}`);
+    const body = await r.json();
+    const price = Number(body?.data?.[0]?.last);
+    if (!Number.isFinite(price) || price <= 0) throw new Error('OKX returned an invalid PI-USDT price');
+    piMarketCache = { price, at: now };
+    return price;
+  } finally { clearTimeout(timer); }
+}
+function withLivePiPrice(row, rate) {
+  if (!row || !rate || !Number(row.price_usd)) return row;
+  return { ...row, price_pi: Number((Number(row.price_usd) / rate).toFixed(6)), pi_usd_rate: rate };
+}
+
 
 // Optional CORS for a separate frontend. Same-origin Vercel deployments need no CORS headers.
 app.use((req, res, next) => {
@@ -106,6 +139,28 @@ app.get('/api/config', (_req, res) => res.json({
   piSandbox: String(process.env.PI_SANDBOX || 'false').toLowerCase() === 'true'
 }));
 
+app.get('/api/market/pi-price', safe(async (_req, res) => {
+  const price = await getPiUsdRate();
+  res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=40');
+  res.json({ pair: 'PI-USDT', source: 'OKX', price_usd: price, fetched_at: new Date().toISOString() });
+}));
+
+app.post('/api/uploads/listing-images', auth, upload.array('images', 3), safe(async (req, res) => {
+  assertDatabaseConfigured();
+  const files = req.files || [];
+  if (files.length < 1 || files.length > 3) return res.status(422).json({ error: 'يجب رفع صورة واحدة على الأقل وبحد أقصى 3 صور', code: 'IMAGE_COUNT' });
+  const urls = [];
+  for (const file of files) {
+    const ext = file.mimetype === 'image/webp' ? 'webp' : file.mimetype === 'image/png' ? 'png' : 'jpg';
+    const name = `${req.user.id}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const { error } = await db.storage.from('listing-images').upload(name, file.buffer, { contentType: file.mimetype, cacheControl: '31536000', upsert: false });
+    if (error) throw error;
+    const { data } = db.storage.from('listing-images').getPublicUrl(name);
+    urls.push(data.publicUrl);
+  }
+  res.status(201).json({ urls });
+}));
+
 app.post('/api/auth/pi', safe(async (req, res) => {
   assertDatabaseConfigured();
   const accessToken = String(req.body?.accessToken || '');
@@ -143,34 +198,42 @@ app.get('/api/listings', safe(async (req, res) => {
   if (category) query = query.eq('category_id', category);
   if (city) query = query.ilike('city', `%${String(city).replace(/[%_]/g, '')}%`);
   if (condition) query = query.eq('condition', condition);
-  if (min !== '' && Number.isFinite(Number(min))) query = query.gte('price_pi', Number(min));
-  if (max !== '' && Number.isFinite(Number(max))) query = query.lte('price_pi', Number(max));
-  if (sort === 'price_asc') query = query.order('price_pi', { ascending: true });
-  else if (sort === 'price_desc') query = query.order('price_pi', { ascending: false });
+  if (min !== '' && Number.isFinite(Number(min))) query = query.gte('price_usd', Number(min));
+  if (max !== '' && Number.isFinite(Number(max))) query = query.lte('price_usd', Number(max));
+  if (sort === 'price_asc') query = query.order('price_usd', { ascending: true });
+  else if (sort === 'price_desc') query = query.order('price_usd', { ascending: false });
   else if (sort === 'views') query = query.order('views', { ascending: false });
   else query = query.order('featured_until', { ascending: false, nullsFirst: false }).order('bumped_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false });
   const from = pageNum * limitNum;
   const out = await many(query.range(from, from + limitNum - 1));
   out.data = await attachListingRelations(out.data);
+  try { const rate = await getPiUsdRate(); out.data = out.data.map(row => withLivePiPrice(row, rate)); } catch (e) { console.warn('[OKX price]', e.message); }
   res.json(out);
 }));
 app.get('/api/listings/:id', safe(async (req, res) => {
   db.rpc('increment_listing_views', { listing_id: req.params.id }).then(() => {}).catch(() => {});
   const item = await one(db.from('listings').select('*').eq('id', req.params.id));
-  res.json({ data: await attachListingRelations(item) });
+  let hydrated = await attachListingRelations(item);
+  try { hydrated = withLivePiPrice(hydrated, await getPiUsdRate()); } catch (e) { console.warn('[OKX price]', e.message); }
+  res.json({ data: hydrated });
 }));
 app.post('/api/listings', auth, safe(async (req, res) => {
-  const S = z.object({ title:z.string().min(3).max(120), description:z.string().min(10).max(5000), category_id:z.string().uuid(), condition:z.enum(['new','like_new','used']), price_pi:z.coerce.number().nonnegative(), negotiable:z.boolean().default(false), image_urls:z.array(z.string().url()).max(10).default([]), country:z.string().max(100).optional(), city:z.string().max(100).optional(), area:z.string().max(150).optional(), delivery_available:z.boolean().default(false) });
-  const v = S.parse(req.body); const data = await one(db.from('listings').insert({ ...v, seller_id:req.user.id }).select('*'));
+  const S = z.object({ title:z.string().min(3).max(120), description:z.string().min(10).max(5000), category_id:z.string().uuid(), condition:z.enum(['new','like_new','used']), price_usd:z.coerce.number().positive().max(100000000), negotiable:z.boolean().default(false), image_urls:z.array(z.string().url()).min(1).max(3), country:z.string().max(100).optional(), city:z.string().max(100).optional(), area:z.string().max(150).optional(), delivery_available:z.boolean().default(false) });
+  const v = S.parse(req.body);
+  const rate = await getPiUsdRate();
+  const price_pi = Number((v.price_usd / rate).toFixed(6));
+  const data = await one(db.from('listings').insert({ ...v, price_pi, pi_usd_rate: rate, seller_id:req.user.id }).select('*'));
   res.status(201).json({ data });
 }));
 app.patch('/api/listings/:id', auth, safe(async (req, res) => {
-  const allowed = ['title','description','category_id','condition','price_pi','negotiable','image_urls','country','city','area','delivery_available','status']; const patch = {};
+  const allowed = ['title','description','category_id','condition','price_usd','negotiable','image_urls','country','city','area','delivery_available','status']; const patch = {};
   for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];
+  if (patch.image_urls && (!Array.isArray(patch.image_urls) || patch.image_urls.length < 1 || patch.image_urls.length > 3)) return res.status(422).json({ error:'يجب أن يحتوي الإعلان على صورة واحدة إلى 3 صور', code:'IMAGE_COUNT' });
+  if (patch.price_usd !== undefined) { const usd=Number(patch.price_usd); if(!Number.isFinite(usd)||usd<=0) return res.status(422).json({error:'سعر الدولار غير صحيح',code:'PRICE_USD'}); const rate=await getPiUsdRate(); patch.price_usd=usd; patch.price_pi=Number((usd/rate).toFixed(6)); patch.pi_usd_rate=rate; }
   res.json({ data: await one(db.from('listings').update(patch).eq('id', req.params.id).eq('seller_id', req.user.id).select('*')) });
 }));
 app.delete('/api/listings/:id', auth, safe(async (req, res) => { const { error } = await db.from('listings').update({ status:'deleted' }).eq('id', req.params.id).eq('seller_id', req.user.id); if (error) throw error; res.json({ ok:true }); }));
-app.get('/api/my-listings', auth, safe(async (req, res) => res.json((await many(db.from('listings').select('*').eq('seller_id', req.user.id).order('created_at', { ascending:false }))).data)));
+app.get('/api/my-listings', auth, safe(async (req, res) => { const rows=(await many(db.from('listings').select('*').eq('seller_id', req.user.id).order('created_at', { ascending:false }))).data; try { const rate=await getPiUsdRate(); return res.json(rows.map(x=>withLivePiPrice(x,rate))); } catch { return res.json(rows); } }));
 
 app.get('/api/favorites', auth, safe(async (req, res) => {
   const favs = (await many(db.from('favorites').select('listing_id').eq('user_id', req.user.id))).data;
@@ -231,5 +294,10 @@ app.use('/api', (_req,res)=>res.status(404).json({error:'API route not found',co
 app.get('/validation-key.txt', (_req,res)=>res.sendFile(path.join(__dirname,'validation-key.txt')));
 app.get('/', (_req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.use((req,res,next)=>{ if(req.method==='GET' && req.accepts('html')) return res.sendFile(path.join(__dirname,'index.html')); next(); });
+app.use((err, req, res, _next) => {
+  console.error(`[${req.method} ${req.path}]`, err);
+  const isMulter = err?.name === 'MulterError';
+  res.status(isMulter ? 422 : 500).json({ error: isMulter ? 'تعذر رفع الصور: تحقق من العدد والحجم' : (err?.message || 'حدث خطأ في الخادم'), code: err?.code || 'SERVER_ERROR' });
+});
 
 export default app;
