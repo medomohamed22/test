@@ -19,8 +19,8 @@ function ensureShell(){
   }
 }
 window.DWLoading={
-  show(label='جاري التحميل...'){ensureShell();const x=document.getElementById('dw-global-loader');document.getElementById('dw-loader-label').textContent=label;x.hidden=false;requestAnimationFrame(()=>x.classList.add('show'))},
-  hide(){const x=document.getElementById('dw-global-loader');if(!x)return;x.classList.remove('show');setTimeout(()=>{x.hidden=true},160)},
+  show(label='جاري التحميل...'){ensureShell();const x=document.getElementById('dw-global-loader');document.getElementById('dw-loader-label').textContent=label;x.hidden=false;x.setAttribute('aria-hidden','false');requestAnimationFrame(()=>x.classList.add('show'))},
+  hide(){const x=document.getElementById('dw-global-loader');if(!x)return;x.classList.remove('show');x.setAttribute('aria-hidden','true');x.hidden=true},
   progress(){ensureShell();const p=document.getElementById('dw-page-progress');p.classList.remove('done');p.classList.add('active')},
   done(){const p=document.getElementById('dw-page-progress');if(!p)return;p.classList.add('done');setTimeout(()=>p.classList.remove('active','done'),240)}
 };
@@ -40,7 +40,7 @@ window.loadPiSDK=async function(){
 
 document.addEventListener('DOMContentLoaded',()=>{
   DW.apply();ensureShell();DWLoading.done();
-  document.querySelectorAll('.back').forEach(b=>{b.onclick=goBackSafe;b.setAttribute('aria-label','رجوع')});
+  document.querySelectorAll('header .back, .top .back').forEach(b=>{b.onclick=goBackSafe;b.setAttribute('aria-label','رجوع')});
   document.addEventListener('click',e=>{
     const a=e.target.closest('a[href]');if(!a||a.target==='_blank'||a.hasAttribute('download')||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
     try{const u=new URL(a.href,location.href);if(u.origin===location.origin&&u.href!==location.href){e.preventDefault();navigateTo(u.href)}}catch{}

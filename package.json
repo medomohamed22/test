@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "check": "node --check app.js && node --check server.js && node --check api/db.js && node --check api/pi.js && node --check pages.js && node --check listing.js && node --check common.js && node --check search.js && node --check dashboard.js && node --check promote.js && node --check admin.js"
+    "check": "node --check app.js && node --check server.js && node --check api/db.js && node --check api/pi.js && node --check pages.js && node --check listing.js && node --check common.js && node --check search.js && node --check dashboard.js && node --check promote.js && node --check admin.js",
+    "postinstall": "node scripts/patch-web-push-url.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
