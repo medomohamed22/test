@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
     "check": "node --check app.js && node --check server.js && node --check api/db.js && node --check api/pi.js && node --check pages.js && node --check listing.js && node --check common.js && node --check search.js && node --check dashboard.js && node --check promote.js && node --check admin.js",
-    "postinstall": "node scripts/patch-web-push-url.mjs"
+    "postinstall": "node -e \"const fs=require('fs');const p='node_modules/web-push/src/web-push-lib.js';if(!fs.existsSync(p)){console.log('[postinstall] web-push not found; skip');process.exit(0)}let s=fs.readFileSync(p,'utf8'),o=s;s=s.replace(\\\"const url = require('url');\\\\n\\\",'').replace(/url\\.parse\\(subscription\\.endpoint\\)/g,'new URL(subscription.endpoint)').replace(/url\\.parse\\(requestDetails\\.endpoint\\)/g,'new URL(requestDetails.endpoint)').replace('httpsOptions.port = urlParts.port;\\\\n      httpsOptions.path = urlParts.path;',\\\"httpsOptions.port = urlParts.port || undefined;\\\\n      httpsOptions.path = urlParts.pathname + urlParts.search;\\\");if(s!==o){fs.writeFileSync(p,s);console.log('[postinstall] patched web-push URL API')}else console.log('[postinstall] no patch needed')\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",

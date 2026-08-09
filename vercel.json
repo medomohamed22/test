@@ -4,14 +4,23 @@
   "trailingSlash": false,
   "headers": [
     {
-      "source": "/(.*).(css|js|svg|webp|png|jpg|jpeg)",
-      "headers": [{"key":"Cache-Control","value":"public, max-age=3600, stale-while-revalidate=86400"}]
+      "source": "/sw.js",
+      "headers": [{"key":"Cache-Control","value":"no-store, no-cache, must-revalidate, max-age=0"}]
+    },
+    {
+      "source": "/version.json",
+      "headers": [{"key":"Cache-Control","value":"no-store, no-cache, must-revalidate, max-age=0"}]
+    },
+    {
+      "source": "/(.*).(html|css|js|webmanifest)",
+      "headers": [{"key":"Cache-Control","value":"no-cache, max-age=0, must-revalidate"}]
+    },
+    {
+      "source": "/(.*).(svg|webp|png|jpg|jpeg|woff|woff2)",
+      "headers": [{"key":"Cache-Control","value":"public, max-age=86400, stale-while-revalidate=604800"}]
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "/api/server?__path=:path*"
-    }
+    {"source": "/api/:path*", "destination": "/api/server?__path=:path*"}
   ]
 }
