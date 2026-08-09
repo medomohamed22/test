@@ -1,0 +1,5 @@
+{
+  "name":"DealWay Marketplace","short_name":"DealWay","start_url":"/","display":"standalone","background_color":"#f8f7fc","theme_color":"#6f3bd4","dir":"auto","lang":"ar",
+  "icons":[{"src":"/app-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}],
+  "shortcuts":[{"name":"بيع منتج","url":"/sell.html"},{"name":"الرسائل","url":"/chats.html"},{"name":"بحث","url":"/search.html"}]
+}

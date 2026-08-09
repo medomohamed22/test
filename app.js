@@ -9,11 +9,16 @@ import jwt from 'jsonwebtoken';
 import { z, ZodError } from 'zod';
 import { db, one, many, assertDatabaseConfigured } from './api/db.js';
 import { verifyPiAccessToken, approvePiPayment, completePiPayment, getPiPayment } from './api/pi.js';
+import webpush from 'web-push';
 
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
+let pushConfigured = Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+if (pushConfigured) { try { webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@dealway.app', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY); } catch (e) { pushConfigured=false; console.warn('[push config]', e.message); } }
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -53,10 +58,23 @@ function withLivePiPrice(row, rate) {
 
 const LISTING_TTL_DAYS = Math.max(7, Math.min(365, Number(process.env.LISTING_TTL_DAYS || 60)));
 function plusDays(days, from = new Date()) { const d = new Date(from); d.setUTCDate(d.getUTCDate() + days); return d.toISOString(); }
+async function sendPush(userId, payload) {
+  if (!userId || !pushConfigured) return;
+  const { data, error } = await db.from('push_subscriptions').select('id,subscription').eq('user_id', userId);
+  if (error) return console.warn('[push subscriptions]', error.message);
+  await Promise.all((data || []).map(async row => {
+    try { await webpush.sendNotification(row.subscription, JSON.stringify(payload)); }
+    catch (e) {
+      if ([404,410].includes(e?.statusCode)) await db.from('push_subscriptions').delete().eq('id', row.id);
+      else console.warn('[push]', e?.message || e);
+    }
+  }));
+}
 async function notify(userId, type, title, body = '', link = null) {
   if (!userId) return;
   const { error } = await db.from('notifications').insert({ user_id:userId, type, title, body, link });
   if (error) console.warn('[notification]', error.message);
+  sendPush(userId, { title, body, link, type }).catch(()=>{});
 }
 async function isBlocked(a, b) {
   if (!a || !b) return false;
@@ -156,14 +174,17 @@ app.get('/health', safe(async (_req, res) => {
 }));
 app.get('/api/health', safe(async (_req, res) => {
   assertDatabaseConfigured();
-  const checks = await Promise.all(['profiles','categories','listings','site_settings','notifications','saved_searches','blocked_users','verification_requests','listing_views'].map(async table => {
+  const checks = await Promise.all(['profiles','categories','listings','site_settings','notifications','saved_searches','blocked_users','verification_requests','listing_views','push_subscriptions'].map(async table => {
     const { error } = await db.from(table).select('*', { head: true, count: 'exact' });
     return { table, ok: !error, error: error?.message || null };
   }));
   res.json({ ok: checks.every(x => x.ok), runtime: process.env.VERCEL ? 'vercel' : 'node', checks });
 }));
 app.get('/api/config', (_req, res) => res.json({
-  piSandbox: String(process.env.PI_SANDBOX || 'false').toLowerCase() === 'true'
+  piSandbox: String(process.env.PI_SANDBOX || 'false').toLowerCase() === 'true',
+  vapidPublicKey: pushConfigured ? VAPID_PUBLIC_KEY : null,
+  supportedLocales: ['ar','en'],
+  defaultCurrency: 'USD'
 }));
 
 app.get('/api/market/pi-price', safe(async (_req, res) => {
@@ -221,7 +242,7 @@ app.get('/api/listings', safe(async (req, res) => {
   const { q='', category='', city='', condition='', min='', max='', sort='newest', negotiable='', delivery='', seller='', page='0', limit='24' } = req.query;
   const pageNum = Math.max(0, Number(page) || 0), limitNum = Math.min(48, Math.max(1, Number(limit) || 24));
   let query = db.from('listings').select('*', { count: 'exact' }).in('status', ['active','reserved']).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
-  if (q) query = query.ilike('title', `%${String(q).replace(/[%_]/g, '')}%`);
+  if (q) { const term=String(q).replace(/[%_,]/g,'').slice(0,80); query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%`); }
   if (category) query = query.eq('category_id', category);
   if (city) query = query.ilike('city', `%${String(city).replace(/[%_]/g, '')}%`);
   if (condition) query = query.eq('condition', condition);
@@ -366,11 +387,11 @@ app.get('/api/chats', auth, safe(async (req, res) => {
   const listingMap = new Map(listingResult.data.map(x=>[x.id,x]));
   const profileMap = new Map(profileResult.data.map(x=>[x.id,x]));
   const chatIds = chats.map(x=>x.id);
-  const messages = (await many(db.from('messages').select('chat_id,sender_id,body,created_at').in('chat_id', chatIds).order('created_at',{ascending:true}))).data;
-  const last = new Map(); for (const m of messages) last.set(m.chat_id,m);
+  const messages = (await many(db.from('messages').select('chat_id,sender_id,body,image_url,read_at,created_at').in('chat_id', chatIds).order('created_at',{ascending:true}))).data;
+  const last = new Map(), unread = new Map(); for (const m of messages) { last.set(m.chat_id,m); if(m.sender_id!==req.user.id && !m.read_at) unread.set(m.chat_id,(unread.get(m.chat_id)||0)+1); }
   res.json(chats.map(c=>{
     const otherId = c.buyer_id===req.user.id ? c.seller_id : c.buyer_id;
-    return { ...c, listings:listingMap.get(c.listing_id)||null, other_user:profileMap.get(otherId)||null, messages:last.has(c.id)?[last.get(c.id)]:[] };
+    return { ...c, listings:listingMap.get(c.listing_id)||null, other_user:profileMap.get(otherId)||null, unread_count:unread.get(c.id)||0, messages:last.has(c.id)?[last.get(c.id)]:[] };
   }));
 }));
 app.get('/api/chats/:id/messages', auth, safe(async (req, res) => {
@@ -380,15 +401,88 @@ app.get('/api/chats/:id/messages', auth, safe(async (req, res) => {
   res.json(msgs.map(m=>({...m,profiles:sm.get(m.sender_id)||null})));
 }));
 app.post('/api/chats/:id/messages', auth, safe(async (req, res) => {
-  const body=String(req.body.body||'').trim(); if(!body || body.length>2000) throw new Error('الرسالة غير صالحة');
+  const body=String(req.body.body||'').trim(); const image_url=req.body.image_url?String(req.body.image_url):null; if((!body&&!image_url) || body.length>2000) throw new Error('الرسالة غير صالحة');
   const chat=await one(db.from('chats').select('*').eq('id',req.params.id)); if(![chat.buyer_id,chat.seller_id].includes(req.user.id)) throw new Error('Forbidden');
-  if(await isBlocked(chat.buyer_id,chat.seller_id)) throw new Error('لا يمكن إرسال رسائل بين حسابين محظورين'); const msg=await one(db.from('messages').insert({chat_id:req.params.id,sender_id:req.user.id,body}).select('*')); await db.from('chats').update({updated_at:new Date().toISOString()}).eq('id',req.params.id); const target=chat.buyer_id===req.user.id?chat.seller_id:chat.buyer_id; await notify(target,'message','رسالة جديدة',body.slice(0,120),`chat:${chat.id}`); res.status(201).json({data:msg});
+  if(await isBlocked(chat.buyer_id,chat.seller_id)) throw new Error('لا يمكن إرسال رسائل بين حسابين محظورين'); const msg=await one(db.from('messages').insert({chat_id:req.params.id,sender_id:req.user.id,body,image_url}).select('*')); await db.from('chats').update({updated_at:new Date().toISOString()}).eq('id',req.params.id); const target=chat.buyer_id===req.user.id?chat.seller_id:chat.buyer_id; await notify(target,'message','رسالة جديدة',(body||'صورة').slice(0,120),`/chats.html?chat=${chat.id}`); res.status(201).json({data:msg});
+}));
+
+
+app.post('/api/uploads/chat-image', auth, upload.single('image'), safe(async(req,res)=>{
+  const file=req.file; if(!file) throw new Error('اختر صورة');
+  const ext=file.mimetype==='image/webp'?'webp':file.mimetype==='image/png'?'png':'jpg';
+  const name=`chat/${req.user.id}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  const {error}=await db.storage.from('listing-images').upload(name,file.buffer,{contentType:file.mimetype,cacheControl:'31536000',upsert:false}); if(error) throw error;
+  const {data}=db.storage.from('listing-images').getPublicUrl(name); res.status(201).json({url:data.publicUrl});
+}));
+app.patch('/api/chats/:id/read', auth, safe(async(req,res)=>{
+  const chat=await one(db.from('chats').select('*').eq('id',req.params.id)); if(![chat.buyer_id,chat.seller_id].includes(req.user.id)) throw new Error('Forbidden');
+  const {error}=await db.from('messages').update({read_at:new Date().toISOString()}).eq('chat_id',chat.id).neq('sender_id',req.user.id).is('read_at',null); if(error) throw error; res.json({ok:true});
 }));
 
 app.post('/api/offers', auth, safe(async(req,res)=>{ const l=await one(db.from('listings').select('seller_id,title').eq('id',req.body.listing_id)); if(l.seller_id===req.user.id) throw new Error('لا يمكنك تقديم عرض على إعلانك'); if(await isBlocked(req.user.id,l.seller_id)) throw new Error('لا يمكن تقديم عرض لهذا المستخدم'); const amount=Number(req.body.amount_pi); if(!Number.isFinite(amount)||amount<=0) throw new Error('قيمة العرض غير صحيحة'); const data=await one(db.from('offers').insert({listing_id:req.body.listing_id,buyer_id:req.user.id,seller_id:l.seller_id,amount_pi:amount}).select('*')); await notify(l.seller_id,'offer','عرض سعر جديد',`${amount} PI على ${l.title}`,`listing:${req.body.listing_id}`); res.status(201).json({data}); }));
 app.patch('/api/offers/:id', auth, safe(async(req,res)=>{ const status=req.body.status; if(!['accepted','rejected','countered','cancelled'].includes(status)) throw new Error('Invalid status'); const offer=await one(db.from('offers').select('*').eq('id',req.params.id)); if(![offer.buyer_id,offer.seller_id].includes(req.user.id)) throw new Error('Forbidden'); const data=await one(db.from('offers').update({status,amount_pi:req.body.amount_pi??offer.amount_pi}).eq('id',offer.id).select('*')); const target=req.user.id===offer.seller_id?offer.buyer_id:offer.seller_id; await notify(target,'offer_update','تحديث على عرض السعر',`الحالة: ${status}`,`listing:${offer.listing_id}`); res.json({data}); }));
 app.post('/api/reports', auth, safe(async(req,res)=>{ const data=await one(db.from('reports').insert({listing_id:req.body.listing_id,reporter_id:req.user.id,reason:String(req.body.reason||'Other').slice(0,100),details:req.body.details?String(req.body.details).slice(0,2000):null}).select('*')); res.status(201).json({data}); }));
 app.post('/api/reviews', auth, safe(async(req,res)=>{ const rating=Number(req.body.rating); if(!Number.isInteger(rating)||rating<1||rating>5) throw new Error('التقييم يجب أن يكون من 1 إلى 5'); const data=await one(db.from('reviews').insert({reviewer_id:req.user.id,reviewed_user_id:req.body.reviewed_user_id,listing_id:req.body.listing_id||null,rating,comment:req.body.comment||null}).select('*')); res.status(201).json({data}); }));
+
+
+
+// ---------- V8 global usability: smart search, PWA push, dashboards ----------
+app.get('/api/search/suggestions', safe(async (req,res)=>{
+  const q=String(req.query.q||'').trim().replace(/[%_,]/g,'').slice(0,60);
+  if(q.length<2) return res.json([]);
+  const {data,error}=await db.from('listings').select('id,title,city,price_usd,image_urls').in('status',['active','reserved']).ilike('title',`%${q}%`).order('views',{ascending:false}).limit(8);
+  if(error) throw error;
+  res.setHeader('Cache-Control','s-maxage=20, stale-while-revalidate=60');
+  res.json(data||[]);
+}));
+
+app.post('/api/push/subscribe', auth, safe(async(req,res)=>{
+  if(!req.body?.endpoint || !req.body?.keys) throw new Error('Invalid push subscription');
+  const subscription={endpoint:req.body.endpoint,expirationTime:req.body.expirationTime||null,keys:req.body.keys};
+  const data=await one(db.from('push_subscriptions').upsert({user_id:req.user.id,endpoint:subscription.endpoint,subscription},{onConflict:'endpoint'}).select('*'));
+  res.status(201).json({ok:true,id:data.id});
+}));
+app.delete('/api/push/subscribe', auth, safe(async(req,res)=>{
+  const endpoint=String(req.body?.endpoint||''); if(endpoint) await db.from('push_subscriptions').delete().eq('user_id',req.user.id).eq('endpoint',endpoint); res.json({ok:true});
+}));
+
+app.get('/api/dashboard', auth, safe(async(req,res)=>{
+  const listings=(await many(db.from('listings').select('id,title,status,views,created_at,featured_until,urgent_until,promoted_until').eq('seller_id',req.user.id).order('created_at',{ascending:false}))).data;
+  const ids=listings.map(x=>x.id);
+  let favs=[],chats=[],payments=[],views=[];
+  if(ids.length){
+    [favs,chats,payments,views]=await Promise.all([
+      many(db.from('favorites').select('listing_id').in('listing_id',ids)).then(x=>x.data),
+      many(db.from('chats').select('listing_id').in('listing_id',ids)).then(x=>x.data),
+      many(db.from('payments').select('listing_id,amount_pi,service,status,created_at').eq('user_id',req.user.id).order('created_at',{ascending:false}).limit(50)).then(x=>x.data),
+      many(db.from('listing_views').select('listing_id,created_at').in('listing_id',ids).gte('created_at',plusDays(-30))).then(x=>x.data)
+    ]);
+  }
+  const countBy=(arr,key)=>arr.reduce((m,x)=>(m[x[key]]=(m[x[key]]||0)+1,m),{});
+  const fm=countBy(favs,'listing_id'), cm=countBy(chats,'listing_id'), vm=countBy(views,'listing_id');
+  const rows=listings.map(x=>({...x,favorites:fm[x.id]||0,chats:cm[x.id]||0,views30d:vm[x.id]||0}));
+  res.json({summary:{listings:listings.length,views:listings.reduce((s,x)=>s+Number(x.views||0),0),favorites:favs.length,chats:chats.length,revenuePi:payments.filter(x=>x.status==='completed').reduce((s,x)=>s+Number(x.amount_pi||0),0)},listings:rows,payments});
+}));
+
+app.get('/api/listings/:id/promotion-analytics', auth, safe(async(req,res)=>{
+  const l=await one(db.from('listings').select('id,seller_id,title,views,featured_until,urgent_until,promoted_until,bumped_at').eq('id',req.params.id));
+  if(l.seller_id!==req.user.id && !['admin','super_admin','moderator'].includes(req.user.role)) throw new Error('Forbidden');
+  const [views,favs,chats,payments]=await Promise.all([
+    many(db.from('listing_views').select('created_at').eq('listing_id',l.id).gte('created_at',plusDays(-30))).then(x=>x.data),
+    db.from('favorites').select('*',{count:'exact',head:true}).eq('listing_id',l.id),
+    db.from('chats').select('*',{count:'exact',head:true}).eq('listing_id',l.id),
+    many(db.from('payments').select('service,amount_pi,status,created_at,completed_at').eq('listing_id',l.id).order('created_at',{ascending:false})).then(x=>x.data)
+  ]);
+  const daily={}; for(const v of views){const d=v.created_at.slice(0,10);daily[d]=(daily[d]||0)+1}
+  res.json({listing:l,views30d:views.length,dailyViews:daily,favorites:favs.count||0,chats:chats.count||0,payments});
+}));
+
+app.get('/api/admin/users', auth, admin, safe(async(req,res)=>{
+  const q=String(req.query.q||'').trim().replace(/[%_,]/g,'').slice(0,60);
+  let query=db.from('profiles').select('id,display_name,pi_username,role,is_verified,rating,completed_deals,created_at').order('created_at',{ascending:false}).limit(100);
+  if(q) query=query.or(`display_name.ilike.%${q}%,pi_username.ilike.%${q}%`);
+  res.json((await many(query)).data);
+}));
 
 const PROMOTION_SERVICES = new Set(['boost_1d','boost_3d','featured_7d','urgent']);
 const PROMOTION_DAYS = { boost_1d:1, boost_3d:3, featured_7d:7, urgent:3 };

@@ -1,13 +1,15 @@
 {
   "name": "dealway-vercel-supabase-pi",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "check": "node --check app.js && node --check server.js && node --check api/db.js && node --check api/pi.js"
+    "check": "node --check app.js && node --check server.js && node --check api/db.js && node --check api/pi.js && node --check pages.js && node --check listing.js && node --check common.js && node --check search.js && node --check dashboard.js && node --check promote.js && node --check admin.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
@@ -16,6 +18,7 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "web-push": "^3.6.7"
   }
 }
