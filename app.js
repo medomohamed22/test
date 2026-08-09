@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { z, ZodError } from 'zod';
 import { db, one, many, assertDatabaseConfigured } from './api/db.js';
-import { verifyPiAccessToken, approvePiPayment, completePiPayment, getPiPayment, sendPiInAppNotifications } from './api/pi.js';
+import { verifyPiAccessToken, approvePiPayment, completePiPayment, getPiPayment, sendPiInAppNotifications, piApiDiagnostics } from './api/pi.js';
 import webpush from 'web-push';
 
 const app = express();
@@ -78,27 +78,51 @@ function notificationSubroute(link) {
   if (raw.startsWith('saved-search:')) return `/search.html?saved=${encodeURIComponent(raw.slice(13))}`;
   return '/account.html';
 }
-async function sendPiNotification(userId, payload) {
+async function sendPiNotification(userId, payload, { throwOnError = false } = {}) {
   // Pi in-app notifications are optional at runtime: database notifications and
-  // Web Push keep working even if Pi has not enabled this capability for the app yet.
-  if (!userId || !process.env.PI_API_KEY || String(process.env.PI_IN_APP_NOTIFICATIONS || 'true').toLowerCase() === 'false') return;
-  const { data: profile, error } = await db.from('profiles').select('pi_uid').eq('id', userId).maybeSingle();
-  if (error || !profile?.pi_uid) {
-    if (error) console.warn('[pi notification profile]', error.message);
-    return;
+  // Web Push keep working even if Pi rejects a notification.
+  const enabled = String(process.env.PI_IN_APP_NOTIFICATIONS || 'true').toLowerCase() !== 'false';
+  if (!userId) return { ok:false, skipped:true, reason:'missing_user_id' };
+  if (!enabled) return { ok:false, skipped:true, reason:'disabled' };
+  if (!String(process.env.PI_API_KEY || '').trim()) return { ok:false, skipped:true, reason:'missing_pi_api_key' };
+
+  const { data: profile, error } = await db.from('profiles').select('pi_uid,pi_username').eq('id', userId).maybeSingle();
+  if (error) {
+    console.warn('[pi notification profile]', error.message);
+    if (throwOnError) throw error;
+    return { ok:false, skipped:true, reason:'profile_lookup_failed' };
   }
+  if (!profile?.pi_uid) return { ok:false, skipped:true, reason:'missing_pi_uid' };
+
   const title = String(payload.title || 'DealWay').replace(/\s+/g, ' ').trim().slice(0, 90);
   const body = String(payload.body || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+  const notification = {
+    title,
+    body,
+    third_party_app_user_uid: profile.pi_uid,
+    subroute: notificationSubroute(payload.link)
+  };
   try {
-    await sendPiInAppNotifications([{
-      title,
-      body,
-      third_party_app_user_uid: profile.pi_uid,
-      subroute: notificationSubroute(payload.link)
-    }]);
+    const response = await sendPiInAppNotifications([notification]);
+    console.info('[pi in-app notification] sent', { userId, piUid: profile.pi_uid, subroute: notification.subroute });
+    return { ok:true, response };
   } catch (e) {
-    // Never make chat/offers fail because the external notification service failed.
-    console.warn('[pi in-app notification]', e?.message || e);
+    const details = {
+      message: e?.message || String(e),
+      status: Number(e?.status || 0) || null,
+      path: e?.path || '/v2/in_app_notifications/notify',
+      response: e?.response || null,
+      userId,
+      piUid: profile.pi_uid
+    };
+    console.warn('[pi in-app notification] failed', details);
+    if (throwOnError) {
+      const err = new Error(details.message);
+      err.status = details.status;
+      err.piDetails = details;
+      throw err;
+    }
+    return { ok:false, ...details };
   }
 }
 async function notify(userId, type, title, body = '', link = null) {
@@ -221,6 +245,38 @@ app.get('/api/config', (_req, res) => res.json({
   supportedLocales: ['ar','en'],
   defaultCurrency: 'USD',
   piInAppNotifications: String(process.env.PI_IN_APP_NOTIFICATIONS || 'true').toLowerCase() !== 'false'
+}));
+
+// Diagnostic endpoint for Pi Browser in-app notifications. It sends a test
+// notification to the currently authenticated Pi user and returns Pi's real
+// HTTP error (without exposing the API key), which makes deployment issues easy
+// to diagnose from the Settings page.
+app.get('/api/notifications/pi-status', auth, (_req, res) => {
+  const d = piApiDiagnostics();
+  res.json({
+    enabled: String(process.env.PI_IN_APP_NOTIFICATIONS || 'true').toLowerCase() !== 'false',
+    apiKeyConfigured: d.apiKeyConfigured,
+    endpoint: d.notificationsEndpoint
+  });
+});
+app.post('/api/notifications/pi-test', auth, safe(async (req, res) => {
+  try {
+    const result = await sendPiNotification(req.user.id, {
+      title: '🔔 اختبار إشعارات DealWay',
+      body: 'إذا ظهر لك هذا الإشعار داخل Pi Browser فالإعداد يعمل بنجاح.',
+      link: '/chats.html'
+    }, { throwOnError: true });
+    res.json({ ok:true, result });
+  } catch (e) {
+    const details = e?.piDetails || {};
+    res.status(502).json({
+      ok:false,
+      error: e?.message || 'Pi notification failed',
+      pi_status: details.status || null,
+      pi_response: details.response || null,
+      endpoint: details.path || '/v2/in_app_notifications/notify'
+    });
+  }
 }));
 
 app.get('/api/market/pi-price', safe(async (_req, res) => {
