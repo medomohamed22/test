@@ -358,16 +358,25 @@ app.get('/api/chats', auth, safe(async (req, res) => {
   const chats = (await many(db.from('chats').select('*').or(`buyer_id.eq.${req.user.id},seller_id.eq.${req.user.id}`).order('updated_at',{ascending:false}))).data;
   if (!chats.length) return res.json([]);
   const listingIds = [...new Set(chats.map(x=>x.listing_id))];
-  const listingRows = (await many(db.from('listings').select('id,title,image_urls,price_pi').in('id', listingIds))).data;
-  const listingMap = new Map(listingRows.map(x=>[x.id,x]));
-  const chatIds = chats.map(x=>x.id); const messages = (await many(db.from('messages').select('chat_id,body,created_at').in('chat_id', chatIds).order('created_at',{ascending:true}))).data;
+  const userIds = [...new Set(chats.flatMap(x=>[x.buyer_id,x.seller_id]).filter(Boolean))];
+  const [listingResult, profileResult] = await Promise.all([
+    many(db.from('listings').select('id,title,image_urls,price_pi,price_usd').in('id', listingIds)),
+    userIds.length ? many(db.from('profiles').select('id,display_name,pi_username,avatar_url,is_verified').in('id', userIds)) : Promise.resolve({data:[]})
+  ]);
+  const listingMap = new Map(listingResult.data.map(x=>[x.id,x]));
+  const profileMap = new Map(profileResult.data.map(x=>[x.id,x]));
+  const chatIds = chats.map(x=>x.id);
+  const messages = (await many(db.from('messages').select('chat_id,sender_id,body,created_at').in('chat_id', chatIds).order('created_at',{ascending:true}))).data;
   const last = new Map(); for (const m of messages) last.set(m.chat_id,m);
-  res.json(chats.map(c=>({ ...c, listings:listingMap.get(c.listing_id)||null, messages:last.has(c.id)?[last.get(c.id)]:[] })));
+  res.json(chats.map(c=>{
+    const otherId = c.buyer_id===req.user.id ? c.seller_id : c.buyer_id;
+    return { ...c, listings:listingMap.get(c.listing_id)||null, other_user:profileMap.get(otherId)||null, messages:last.has(c.id)?[last.get(c.id)]:[] };
+  }));
 }));
 app.get('/api/chats/:id/messages', auth, safe(async (req, res) => {
   const chat = await one(db.from('chats').select('*').eq('id',req.params.id)); if (![chat.buyer_id,chat.seller_id].includes(req.user.id)) throw new Error('Forbidden');
   const msgs = (await many(db.from('messages').select('*').eq('chat_id',req.params.id).order('created_at'))).data;
-  const senderIds=[...new Set(msgs.map(x=>x.sender_id))]; const senders=senderIds.length?(await many(db.from('profiles').select('id,display_name,avatar_url').in('id',senderIds))).data:[]; const sm=new Map(senders.map(x=>[x.id,x]));
+  const senderIds=[...new Set(msgs.map(x=>x.sender_id))]; const senders=senderIds.length?(await many(db.from('profiles').select('id,display_name,pi_username,avatar_url,is_verified').in('id',senderIds))).data:[]; const sm=new Map(senders.map(x=>[x.id,x]));
   res.json(msgs.map(m=>({...m,profiles:sm.get(m.sender_id)||null})));
 }));
 app.post('/api/chats/:id/messages', auth, safe(async (req, res) => {
