@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { z, ZodError } from 'zod';
 import { db, one, many, assertDatabaseConfigured } from './api/db.js';
-import { verifyPiAccessToken, approvePiPayment, completePiPayment, getPiPayment } from './api/pi.js';
+import { verifyPiAccessToken, approvePiPayment, completePiPayment, getPiPayment, sendPiInAppNotifications } from './api/pi.js';
 import webpush from 'web-push';
 
 const app = express();
@@ -70,11 +70,46 @@ async function sendPush(userId, payload) {
     }
   }));
 }
+function notificationSubroute(link) {
+  const raw = String(link || '').trim();
+  if (!raw) return '/account.html';
+  if (raw.startsWith('/')) return raw.slice(0, 500);
+  if (raw.startsWith('listing:')) return `/listing.html?id=${encodeURIComponent(raw.slice(8))}`;
+  if (raw.startsWith('saved-search:')) return `/search.html?saved=${encodeURIComponent(raw.slice(13))}`;
+  return '/account.html';
+}
+async function sendPiNotification(userId, payload) {
+  // Pi in-app notifications are optional at runtime: database notifications and
+  // Web Push keep working even if Pi has not enabled this capability for the app yet.
+  if (!userId || !process.env.PI_API_KEY || String(process.env.PI_IN_APP_NOTIFICATIONS || 'true').toLowerCase() === 'false') return;
+  const { data: profile, error } = await db.from('profiles').select('pi_uid').eq('id', userId).maybeSingle();
+  if (error || !profile?.pi_uid) {
+    if (error) console.warn('[pi notification profile]', error.message);
+    return;
+  }
+  const title = String(payload.title || 'DealWay').replace(/\s+/g, ' ').trim().slice(0, 90);
+  const body = String(payload.body || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+  try {
+    await sendPiInAppNotifications([{
+      title,
+      body,
+      third_party_app_user_uid: profile.pi_uid,
+      subroute: notificationSubroute(payload.link)
+    }]);
+  } catch (e) {
+    // Never make chat/offers fail because the external notification service failed.
+    console.warn('[pi in-app notification]', e?.message || e);
+  }
+}
 async function notify(userId, type, title, body = '', link = null) {
   if (!userId) return;
   const { error } = await db.from('notifications').insert({ user_id:userId, type, title, body, link });
   if (error) console.warn('[notification]', error.message);
-  sendPush(userId, { title, body, link, type }).catch(()=>{});
+  const payload = { title, body, link, type };
+  await Promise.allSettled([
+    sendPush(userId, payload),
+    sendPiNotification(userId, payload)
+  ]);
 }
 async function isBlocked(a, b) {
   if (!a || !b) return false;
@@ -184,7 +219,8 @@ app.get('/api/config', (_req, res) => res.json({
   piSandbox: String(process.env.PI_SANDBOX || 'false').toLowerCase() === 'true',
   vapidPublicKey: pushConfigured ? VAPID_PUBLIC_KEY : null,
   supportedLocales: ['ar','en'],
-  defaultCurrency: 'USD'
+  defaultCurrency: 'USD',
+  piInAppNotifications: String(process.env.PI_IN_APP_NOTIFICATIONS || 'true').toLowerCase() !== 'false'
 }));
 
 app.get('/api/market/pi-price', safe(async (_req, res) => {
@@ -405,7 +441,25 @@ app.get('/api/chats/:id/messages', auth, safe(async (req, res) => {
 app.post('/api/chats/:id/messages', auth, safe(async (req, res) => {
   const body=String(req.body.body||'').trim(); const image_url=req.body.image_url?String(req.body.image_url):null; if((!body&&!image_url) || body.length>2000) throw new Error('الرسالة غير صالحة');
   const chat=await one(db.from('chats').select('*').eq('id',req.params.id)); if(![chat.buyer_id,chat.seller_id].includes(req.user.id)) throw new Error('Forbidden');
-  if(await isBlocked(chat.buyer_id,chat.seller_id)) throw new Error('لا يمكن إرسال رسائل بين حسابين محظورين'); const msg=await one(db.from('messages').insert({chat_id:req.params.id,sender_id:req.user.id,body,image_url}).select('*')); await db.from('chats').update({updated_at:new Date().toISOString()}).eq('id',req.params.id); const target=chat.buyer_id===req.user.id?chat.seller_id:chat.buyer_id; await notify(target,'message','رسالة جديدة',(body||'صورة').slice(0,120),`/chats.html?chat=${chat.id}`); res.status(201).json({data:msg});
+  if(await isBlocked(chat.buyer_id,chat.seller_id)) throw new Error('لا يمكن إرسال رسائل بين حسابين محظورين');
+  const msg=await one(db.from('messages').insert({chat_id:req.params.id,sender_id:req.user.id,body,image_url}).select('*'));
+  await db.from('chats').update({updated_at:new Date().toISOString()}).eq('id',req.params.id);
+  const target=chat.buyer_id===req.user.id?chat.seller_id:chat.buyer_id;
+  const [listingResult, senderResult] = await Promise.all([
+    db.from('listings').select('title').eq('id', chat.listing_id).maybeSingle(),
+    db.from('profiles').select('display_name,pi_username').eq('id', req.user.id).maybeSingle()
+  ]);
+  const listingTitle = listingResult.data?.title || 'المنتج';
+  const senderName = senderResult.data?.display_name || senderResult.data?.pi_username || 'مستخدم Pi';
+  const preview = body ? body.slice(0, 130) : '📷 أرسل لك صورة';
+  await notify(
+    target,
+    'message',
+    `💬 رسالة جديدة على ${listingTitle}`.slice(0, 90),
+    `${senderName}: ${preview}`.slice(0, 220),
+    `/chats.html?chat=${chat.id}`
+  );
+  res.status(201).json({data:msg});
 }));
 
 
@@ -421,8 +475,38 @@ app.patch('/api/chats/:id/read', auth, safe(async(req,res)=>{
   const {error}=await db.from('messages').update({read_at:new Date().toISOString()}).eq('chat_id',chat.id).neq('sender_id',req.user.id).is('read_at',null); if(error) throw error; res.json({ok:true});
 }));
 
-app.post('/api/offers', auth, safe(async(req,res)=>{ const l=await one(db.from('listings').select('seller_id,title').eq('id',req.body.listing_id)); if(l.seller_id===req.user.id) throw new Error('لا يمكنك تقديم عرض على إعلانك'); if(await isBlocked(req.user.id,l.seller_id)) throw new Error('لا يمكن تقديم عرض لهذا المستخدم'); const amount=Number(req.body.amount_pi); if(!Number.isFinite(amount)||amount<=0) throw new Error('قيمة العرض غير صحيحة'); const data=await one(db.from('offers').insert({listing_id:req.body.listing_id,buyer_id:req.user.id,seller_id:l.seller_id,amount_pi:amount}).select('*')); await notify(l.seller_id,'offer','عرض سعر جديد',`${amount} PI على ${l.title}`,`listing:${req.body.listing_id}`); res.status(201).json({data}); }));
-app.patch('/api/offers/:id', auth, safe(async(req,res)=>{ const status=req.body.status; if(!['accepted','rejected','countered','cancelled'].includes(status)) throw new Error('Invalid status'); const offer=await one(db.from('offers').select('*').eq('id',req.params.id)); if(![offer.buyer_id,offer.seller_id].includes(req.user.id)) throw new Error('Forbidden'); const data=await one(db.from('offers').update({status,amount_pi:req.body.amount_pi??offer.amount_pi}).eq('id',offer.id).select('*')); const target=req.user.id===offer.seller_id?offer.buyer_id:offer.seller_id; await notify(target,'offer_update','تحديث على عرض السعر',`الحالة: ${status}`,`listing:${offer.listing_id}`); res.json({data}); }));
+app.post('/api/offers', auth, safe(async(req,res)=>{
+  const l=await one(db.from('listings').select('seller_id,title').eq('id',req.body.listing_id));
+  if(l.seller_id===req.user.id) throw new Error('لا يمكنك تقديم عرض على إعلانك');
+  if(await isBlocked(req.user.id,l.seller_id)) throw new Error('لا يمكن تقديم عرض لهذا المستخدم');
+  const amount=Number(req.body.amount_pi); if(!Number.isFinite(amount)||amount<=0) throw new Error('قيمة العرض غير صحيحة');
+  const data=await one(db.from('offers').insert({listing_id:req.body.listing_id,buyer_id:req.user.id,seller_id:l.seller_id,amount_pi:amount}).select('*'));
+  const { data: buyer } = await db.from('profiles').select('display_name,pi_username').eq('id', req.user.id).maybeSingle();
+  const buyerName = buyer?.display_name || buyer?.pi_username || 'مشتري';
+  await notify(
+    l.seller_id,
+    'offer',
+    `💰 عرض شراء جديد: ${amount} π`.slice(0, 90),
+    `${buyerName} قدّم عرضًا على «${l.title}». افتح الإعلان لمراجعة العرض.`.slice(0, 220),
+    `/listing.html?id=${encodeURIComponent(req.body.listing_id)}`
+  );
+  res.status(201).json({data});
+}));
+app.patch('/api/offers/:id', auth, safe(async(req,res)=>{
+  const status=req.body.status; if(!['accepted','rejected','countered','cancelled'].includes(status)) throw new Error('Invalid status');
+  const offer=await one(db.from('offers').select('*').eq('id',req.params.id)); if(![offer.buyer_id,offer.seller_id].includes(req.user.id)) throw new Error('Forbidden');
+  const data=await one(db.from('offers').update({status,amount_pi:req.body.amount_pi??offer.amount_pi}).eq('id',offer.id).select('*'));
+  const target=req.user.id===offer.seller_id?offer.buyer_id:offer.seller_id;
+  const [listingResult, actorResult] = await Promise.all([
+    db.from('listings').select('title').eq('id', offer.listing_id).maybeSingle(),
+    db.from('profiles').select('display_name,pi_username').eq('id', req.user.id).maybeSingle()
+  ]);
+  const labels={accepted:'تم قبول عرضك ✅',rejected:'تم رفض العرض',countered:'يوجد عرض مقابل جديد 🔁',cancelled:'تم إلغاء العرض'};
+  const actorName=actorResult.data?.display_name||actorResult.data?.pi_username||'الطرف الآخر';
+  const listingTitle=listingResult.data?.title||'المنتج';
+  await notify(target,'offer_update',labels[status]||'تحديث على عرض السعر',`${actorName} حدّث العرض على «${listingTitle}» · ${Number(data.amount_pi||offer.amount_pi)} π`.slice(0,220),`/listing.html?id=${encodeURIComponent(offer.listing_id)}`);
+  res.json({data});
+}));
 app.post('/api/reports', auth, safe(async(req,res)=>{ const data=await one(db.from('reports').insert({listing_id:req.body.listing_id,reporter_id:req.user.id,reason:String(req.body.reason||'Other').slice(0,100),details:req.body.details?String(req.body.details).slice(0,2000):null}).select('*')); res.status(201).json({data}); }));
 app.post('/api/reviews', auth, safe(async(req,res)=>{ const rating=Number(req.body.rating); if(!Number.isInteger(rating)||rating<1||rating>5) throw new Error('التقييم يجب أن يكون من 1 إلى 5'); const data=await one(db.from('reviews').insert({reviewer_id:req.user.id,reviewed_user_id:req.body.reviewed_user_id,listing_id:req.body.listing_id||null,rating,comment:req.body.comment||null}).select('*')); res.status(201).json({data}); }));
 
