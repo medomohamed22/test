@@ -17,6 +17,7 @@ const io = new Server(server, { cors: { origin: true, credentials: true } });
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) throw new Error('JWT_SECRET must be configured in production');
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -32,6 +33,7 @@ function admin(req,res,next){ return ['admin','super_admin','moderator'].include
 const safe = fn => async (req,res) => { try { await fn(req,res); } catch(e) { console.error(e); res.status(400).json({ error:e.message || 'Request failed' }); } };
 
 app.get('/health', (_req,res)=>res.json({ok:true,app:'DealWay'}));
+app.get('/api/config', (_req,res)=>res.json({ piSandbox: String(process.env.PI_SANDBOX || '').toLowerCase() === 'true' || process.env.NODE_ENV !== 'production' }));
 
 app.post('/api/auth/pi', safe(async(req,res)=>{
   const me = await verifyPiAccessToken(req.body.accessToken);
@@ -112,14 +114,51 @@ app.patch('/api/offers/:id', auth, safe(async(req,res)=>{
 app.post('/api/reports', auth, safe(async(req,res)=>{ const data=await one(db.from('reports').insert({listing_id:req.body.listing_id,reporter_id:req.user.id,reason:req.body.reason,details:req.body.details||null}).select('*')); res.status(201).json({data}); }));
 app.post('/api/reviews', auth, safe(async(req,res)=>{ const data=await one(db.from('reviews').insert({reviewer_id:req.user.id,reviewed_user_id:req.body.reviewed_user_id,listing_id:req.body.listing_id||null,rating:Number(req.body.rating),comment:req.body.comment||null}).select('*')); res.status(201).json({data}); }));
 
+const PROMOTION_SERVICES = new Set(['boost_1d','boost_3d','featured_7d','urgent']);
+async function promotionPrice(service){
+  if(!PROMOTION_SERVICES.has(service)) throw new Error('Invalid promotion service');
+  const {data}=await db.from('site_settings').select('value').eq('key','promotion_prices').maybeSingle();
+  const prices=data?.value || {}; const amount=Number(prices[service]);
+  if(!Number.isFinite(amount) || amount <= 0) throw new Error('Promotion price is not configured');
+  return amount;
+}
+async function validatePromotionPayment(payment,user){
+  if(!payment?.identifier) throw new Error('Invalid Pi payment');
+  if(payment.user_uid !== user.pi_uid) throw new Error('Payment user mismatch');
+  if(payment.direction && payment.direction !== 'user_to_app') throw new Error('Invalid payment direction');
+  const service=String(payment.metadata?.service || ''); const listingId=String(payment.metadata?.listingId || '');
+  if(!listingId || !PROMOTION_SERVICES.has(service)) throw new Error('Invalid payment metadata');
+  const listing=await one(db.from('listings').select('id,seller_id').eq('id',listingId));
+  if(listing.seller_id !== user.id) throw new Error('You can only promote your own listing');
+  const amount=await promotionPrice(service);
+  if(Math.abs(Number(payment.amount)-amount) > 1e-8) throw new Error('Payment amount mismatch');
+  return {service,listingId,amount};
+}
+async function activatePromotion(paymentId,txid,user){
+  const payment=await getPiPayment(paymentId); const info=await validatePromotionPayment(payment,user);
+  const complete=payment.status?.developer_completed ? payment : await completePiPayment(paymentId,txid);
+  const p=await one(db.from('payments').upsert({user_id:user.id,listing_id:info.listingId,service:info.service,amount_pi:info.amount,pi_payment_id:paymentId,txid,status:'completed',completed_at:new Date().toISOString()},{onConflict:'pi_payment_id'}).select('*'));
+  const days=p.service==='featured_7d'?7:p.service==='boost_3d'?3:1; const patch={bumped_at:new Date().toISOString()};
+  if(p.service==='featured_7d') patch.featured_until=new Date(Date.now()+days*86400000).toISOString();
+  if(p.service==='urgent') patch.urgent_until=new Date(Date.now()+7*86400000).toISOString();
+  await db.from('listings').update(patch).eq('id',p.listing_id).eq('seller_id',user.id);
+  return complete;
+}
 app.post('/api/payments/approve', auth, safe(async(req,res)=>{
-  const {paymentId,service,listingId,amountPi}=req.body; const payment=await getPiPayment(paymentId); if(Number(payment.amount)!==Number(amountPi)) throw new Error('Payment amount mismatch');
-  await approvePiPayment(paymentId); await db.from('payments').upsert({user_id:req.user.id,listing_id:listingId||null,service,amount_pi:amountPi,pi_payment_id:paymentId,status:'approved'},{onConflict:'pi_payment_id'}); res.json({ok:true});
+  const paymentId=String(req.body.paymentId||''); const payment=await getPiPayment(paymentId); const info=await validatePromotionPayment(payment,req.user);
+  if(!payment.status?.developer_approved) await approvePiPayment(paymentId);
+  await db.from('payments').upsert({user_id:req.user.id,listing_id:info.listingId,service:info.service,amount_pi:info.amount,pi_payment_id:paymentId,status:'approved'},{onConflict:'pi_payment_id'});
+  res.json({ok:true});
 }));
 app.post('/api/payments/complete', auth, safe(async(req,res)=>{
-  const {paymentId,txid}=req.body; const complete=await completePiPayment(paymentId,txid); const p=await one(db.from('payments').update({txid,status:'completed',completed_at:new Date().toISOString()}).eq('pi_payment_id',paymentId).eq('user_id',req.user.id).select('*'));
-  const days=p.service==='featured_7d'?7:p.service==='boost_7d'?7:p.service==='boost_3d'?3:1; if(p.listing_id){ const patch={bumped_at:new Date().toISOString()}; if(p.service.startsWith('featured')) patch.featured_until=new Date(Date.now()+days*86400000).toISOString(); if(p.service==='urgent') patch.urgent_until=new Date(Date.now()+7*86400000).toISOString(); await db.from('listings').update(patch).eq('id',p.listing_id); }
-  res.json({ok:true,complete});
+  const paymentId=String(req.body.paymentId||''); const txid=String(req.body.txid||''); if(!paymentId||!txid) throw new Error('Payment id and txid are required');
+  res.json({ok:true,complete:await activatePromotion(paymentId,txid,req.user)});
+}));
+app.post('/api/payments/reconcile', auth, safe(async(req,res)=>{
+  const paymentId=String(req.body.paymentId||''); const payment=await getPiPayment(paymentId); await validatePromotionPayment(payment,req.user);
+  if(payment.status?.developer_completed) return res.json({ok:true,alreadyCompleted:true});
+  const txid=payment.transaction?.txid; if(!txid || !payment.status?.transaction_verified) throw new Error('Payment transaction is not ready for completion');
+  res.json({ok:true,complete:await activatePromotion(paymentId,txid,req.user)});
 }));
 
 app.get('/api/admin/stats', auth, admin, safe(async(_req,res)=>{
