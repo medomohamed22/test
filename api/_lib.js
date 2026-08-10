@@ -15,6 +15,16 @@ function assertEnv() {
   if (missing.length) throw new Error('Missing environment variables: ' + missing.join(', '));
 }
 
+function serverHeaders(extra = {}) {
+  // New sb_secret_* keys are opaque and belong in apikey. Legacy service_role is a JWT
+  // and is also accepted in Authorization. Never expose either value to the browser.
+  return {
+    apikey: SUPABASE_SERVER_KEY,
+    ...(SUPABASE_SERVER_KEY.startsWith('sb_secret_') ? {} : { Authorization: `Bearer ${SUPABASE_SERVER_KEY}` }),
+    ...extra,
+  };
+}
+
 function send(res, status, data) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -37,22 +47,13 @@ function body(req) {
   return {};
 }
 
-function b64url(input) {
-  return Buffer.from(input).toString('base64url');
-}
+function b64url(input) { return Buffer.from(input).toString('base64url'); }
 
 function signJwt(payload, expiresInSec = 3600) {
   assertEnv();
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'HS256', typ: 'JWT' };
-  const claims = {
-    aud: 'authenticated',
-    role: 'authenticated',
-    iat: now,
-    exp: now + expiresInSec,
-    iss: 'violet-pi-chat',
-    ...payload,
-  };
+  const claims = { aud: 'authenticated', role: 'authenticated', iat: now, exp: now + expiresInSec, iss: 'violet-pi-chat', ...payload };
   const encoded = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
   const signature = crypto.createHmac('sha256', SUPABASE_JWT_SECRET).update(encoded).digest('base64url');
   return `${encoded}.${signature}`;
@@ -81,15 +82,11 @@ function requireUser(req) {
 
 async function verifyPiAccessToken(accessToken) {
   if (!accessToken) throw new Error('missing_pi_access_token');
-  const r = await fetch(`${PI_API_BASE}/v2/me`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-  });
+  const r = await fetch(`${PI_API_BASE}/v2/me`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
   if (!r.ok) {
     const text = await r.text().catch(() => '');
     const e = new Error(r.status === 401 ? 'pi_unauthorized' : 'pi_api_error');
-    e.status = r.status;
-    e.detail = text.slice(0, 300);
-    throw e;
+    e.status = r.status; e.detail = text.slice(0, 300); throw e;
   }
   const me = await r.json();
   if (!me || !me.uid || !me.username) throw new Error('pi_profile_incomplete');
@@ -100,27 +97,44 @@ async function sb(path, { method = 'GET', data, headers = {} } = {}) {
   assertEnv();
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
-    headers: {
-      apikey: SUPABASE_SERVER_KEY,
-      ...(SUPABASE_SERVER_KEY.startsWith('sb_secret_') ? {} : { Authorization: `Bearer ${SUPABASE_SERVER_KEY}` }),
+    headers: serverHeaders({
       Accept: 'application/json',
       ...(data !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...headers,
-    },
+    }),
     body: data !== undefined ? JSON.stringify(data) : undefined,
   });
   const text = await r.text();
   let parsed = null;
-  if (text) {
-    try { parsed = JSON.parse(text); } catch { parsed = text; }
-  }
+  if (text) { try { parsed = JSON.parse(text); } catch { parsed = text; } }
   if (!r.ok) {
-    const e = new Error('supabase_request_failed');
-    e.status = r.status;
-    e.detail = parsed;
-    throw e;
+    const e = new Error('supabase_request_failed'); e.status = r.status; e.detail = parsed; throw e;
   }
   return parsed;
+}
+
+async function realtimeBroadcast(topic, event, payload) {
+  assertEnv();
+  const url = `${SUPABASE_URL}/realtime/v1/api/broadcast/${encodeURIComponent(topic)}/events/${encodeURIComponent(event)}?private=true`;
+  const r = await fetch(url, { method: 'POST', headers: serverHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload || {}) });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => '');
+    console.warn('realtime broadcast failed', r.status, detail.slice(0, 300));
+    return false;
+  }
+  return true;
+}
+
+async function storageDelete(path) {
+  if (!path) return true;
+  assertEnv();
+  const safePath = String(path).split('/').map(encodeURIComponent).join('/');
+  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/violet-delivery/${safePath}`, { method: 'DELETE', headers: serverHeaders() });
+  if (!r.ok && r.status !== 404) {
+    console.warn('storage delete failed', r.status, await r.text().catch(() => ''));
+    return false;
+  }
+  return true;
 }
 
 function publicConfig() {
@@ -128,11 +142,9 @@ function publicConfig() {
   return { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_PUBLISHABLE_KEY };
 }
 
-function uuidList(ids) {
-  return ids.filter(Boolean).join(',');
-}
+function uuidList(ids) { return ids.filter(Boolean).join(','); }
 
 module.exports = {
   send, allowMethods, body, signJwt, verifyJwt, requireUser,
-  verifyPiAccessToken, sb, publicConfig, uuidList,
+  verifyPiAccessToken, sb, publicConfig, uuidList, realtimeBroadcast, storageDelete,
 };

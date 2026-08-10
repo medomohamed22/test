@@ -1,4 +1,4 @@
-const { send, allowMethods, body, requireUser, sb, uuidList } = require('./_lib');
+const { send, allowMethods, body, requireUser, sb, uuidList, realtimeBroadcast } = require('./_lib');
 
 async function hydrateRooms(userId) {
   const mine = await sb(`room_members?user_id=eq.${userId}&select=room_id,role`);
@@ -38,21 +38,28 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET') return send(res, 200, { rooms: await hydrateRooms(me.sub) });
 
     const b = body(req);
+    let affected = [];
     if (b.kind === 'direct') {
       const peerId = String(b.peerId || '');
       if (!peerId || peerId === me.sub) return send(res, 400, { error: 'invalid_peer' });
       const peer = await sb(`app_users?id=eq.${peerId}&select=id&limit=1`);
       if (!peer?.length) return send(res, 404, { error: 'peer_not_found' });
       await sb('rpc/api_create_direct_room', { method: 'POST', data: { p_creator: me.sub, p_peer: peerId } });
+      affected = [me.sub, peerId];
     } else if (b.kind === 'group') {
       const name = String(b.name || '').trim().slice(0, 80);
       const description = String(b.description || '').trim().slice(0, 240);
       const memberIds = Array.isArray(b.memberIds) ? [...new Set(b.memberIds.map(String))] : [];
       if (!name) return send(res, 400, { error: 'group_name_required' });
       await sb('rpc/api_create_group', { method: 'POST', data: { p_creator: me.sub, p_name: name, p_description: description, p_members: memberIds } });
+      affected = [me.sub, ...memberIds];
     } else {
       return send(res, 400, { error: 'invalid_room_kind' });
     }
+
+    await Promise.allSettled([...new Set(affected)].map(uid =>
+      realtimeBroadcast(`user:${uid}`, 'room_changed', { by: me.sub })
+    ));
     send(res, 200, { ok: true, rooms: await hydrateRooms(me.sub) });
   } catch (e) {
     console.error('rooms error', e, e.detail || '');

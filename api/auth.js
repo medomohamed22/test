@@ -12,8 +12,8 @@ module.exports = async function handler(req, res) {
     });
     const user = Array.isArray(rows) ? rows[0] : null;
     if (!user) throw new Error('user_upsert_failed');
-    const token = signJwt({ sub: user.id, pi_uid: user.pi_uid, username: user.username }, 3600);
-    send(res, 200, { ok: true, token, user, ...publicConfig(), expiresIn: 3600 });
+    const token = signJwt({ sub: user.id, pi_uid: user.pi_uid, username: user.username }, 86400);
+    send(res, 200, { ok: true, token, user, ...publicConfig(), expiresIn: 86400 });
   } catch (e) {
     console.error('auth error', e);
     const status = e.message === 'pi_unauthorized' ? 401 : 500;
