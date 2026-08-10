@@ -280,7 +280,6 @@ html[dir="ltr"] .context,html[dir="ltr"] .modal-card,html[dir="ltr"] .card{text-
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script crossorigin src="https://unpkg.com/@daily-co/daily-js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(location.search).get("sandbox") === "1" }); } catch(e) { console.warn("Pi init", e); }
 </script>
@@ -1127,158 +1126,127 @@ $('#archivedBanner').onclick=()=>{currentFilter='archived';$$('.chip').forEach(x
 function applyTheme(){const dark=localStorage.getItem('violet-theme')==='dark';document.documentElement.dataset.theme=dark?'dark':'';$('#themeSwitch')?.classList.toggle('on',dark)}function toggleTheme(){const dark=document.documentElement.dataset.theme==='dark';localStorage.setItem('violet-theme',dark?'light':'dark');applyTheme()}if($('#themeSwitch'))$('#themeSwitch').onclick=toggleTheme;
 $('#clearData').onclick=async()=>{if(!confirm('حذف جميع بيانات المحادثات من هذا الجهاز؟'))return;await clearS('messages');await clearS('chats');renderChats();toast('تم حذف البيانات')}
 
-const GOOGLE_SCOPE='https://www.googleapis.com/auth/drive.file';
+
 const GOOGLE_LINK_KEY='chatway-google-drive-linked';
-const GOOGLE_FOLDER='ChatWay Backups';
-let googleClientId='',googleAccessToken='',googleTokenExpiresAt=0,driveBusy=false;
+let driveBusy=false;
 
 function setDriveBusy(on,label=''){
   driveBusy=on;
-  ['connectGoogleDrive','backupToGoogleDrive','restoreFromGoogleDrive','disconnectGoogleDrive'].forEach(id=>{
-    const el=$('#'+id);if(el)el.classList.toggle('drive-working',on);
-  });
+  ['connectGoogleDrive','backupToGoogleDrive','restoreFromGoogleDrive','disconnectGoogleDrive'].forEach(id=>$('#'+id)?.classList.toggle('drive-working',on));
   if(label&&$('#googleDriveStatus'))$('#googleDriveStatus').textContent=label;
 }
-function updateGoogleDriveUI(){
-  const linked=localStorage.getItem(GOOGLE_LINK_KEY)==='1';
-  const connected=!!googleAccessToken&&Date.now()<googleTokenExpiresAt-30000;
+async function googleApi(pathOptions={}){
+  if(!isCloudReady())throw new Error('pi_login_required');
+  const {method='POST',body=null}=pathOptions;
+  const headers={Authorization:`Bearer ${cloud.token}`};
+  if(body!==null)headers['Content-Type']='application/json';
+  const r=await fetch('/api/google',{method,headers,body:body===null?undefined:JSON.stringify(body)});
+  const txt=await r.text();let d={};try{d=txt?JSON.parse(txt):{}}catch{}
+  if(!r.ok){const e=new Error(d.error||'google_api_failed');e.status=r.status;e.detail=d;throw e}
+  return d;
+}
+async function updateGoogleDriveUI(message=''){
   const st=$('#googleDriveStatus'),pill=$('#googleDrivePill'),disc=$('#disconnectGoogleDrive');
-  if(st)st.textContent=connected?t('connected'):(linked?(currentLanguage==='en'?'Linked — connect again when needed':'تم الربط — سيتم طلب الاتصال عند الحاجة'):t('notConnected'));
-  if(pill)pill.textContent='● '+(connected?t('connected'):t('notConnected'));
-  if(disc)disc.style.display=linked?'block':'none';
-}
-async function getGoogleClientId(){
-  if(googleClientId)return googleClientId;
-  const r=await fetch('/api/auth?public=1',{cache:'no-store'});
-  const d=await r.json();
-  googleClientId=d.googleClientId||'';
-  if(!googleClientId)throw new Error('missing_GOOGLE_CLIENT_ID');
-  return googleClientId;
-}
-async function waitForGIS(){
-  for(let i=0;i<100;i++){
-    if(window.google?.accounts?.oauth2)return;
-    await new Promise(r=>setTimeout(r,100));
+  if(!isCloudReady()){
+    if(st)st.textContent=currentLanguage==='en'?'Sign in with Pi first':'سجّل الدخول بحساب Pi أولًا';
+    if(pill)pill.textContent='● '+t('notConnected');
+    if(disc)disc.style.display='none';
+    return;
   }
-  throw new Error('google_identity_unavailable');
-}
-async function requestGoogleToken(forceConsent=false){
-  if(googleAccessToken&&Date.now()<googleTokenExpiresAt-30000)return googleAccessToken;
-  const clientId=await getGoogleClientId();await waitForGIS();
-  return new Promise((resolve,reject)=>{
-    const client=google.accounts.oauth2.initTokenClient({
-      client_id:clientId,scope:GOOGLE_SCOPE,
-      callback:r=>{
-        if(r?.error)return reject(new Error(r.error));
-        googleAccessToken=r.access_token||'';
-        googleTokenExpiresAt=Date.now()+Number(r.expires_in||3600)*1000;
-        localStorage.setItem(GOOGLE_LINK_KEY,'1');updateGoogleDriveUI();resolve(googleAccessToken);
-      },
-      error_callback:e=>reject(new Error(e?.type||'google_oauth_failed'))
-    });
-    client.requestAccessToken({prompt:forceConsent?'consent':''});
-  });
-}
-async function driveFetch(url,options={}){
-  const token=await requestGoogleToken(false);
-  const r=await fetch(url,{...options,headers:{Authorization:`Bearer ${token}`,...(options.headers||{})}});
-  if(!r.ok){const txt=await r.text().catch(()=> '');const e=new Error('drive_http_'+r.status);e.detail=txt;throw e}
-  return r;
-}
-function qEsc(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
-async function getDriveFolder(){
-  const q=`name='${qEsc(GOOGLE_FOLDER)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const r=await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=drive&pageSize=10&fields=files(id,name)&q='+encodeURIComponent(q));
-  const d=await r.json();
-  if(d.files?.[0])return d.files[0].id;
-  const cr=await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({name:GOOGLE_FOLDER,mimeType:'application/vnd.google-apps.folder'})
-  });
-  return (await cr.json()).id;
+  try{
+    const d=await googleApi({method:'GET'});
+    localStorage.setItem(GOOGLE_LINK_KEY,d.connected?'1':'0');
+    if(st)st.textContent=message||(d.connected?t('connected'):t('notConnected'));
+    if(pill)pill.textContent='● '+(d.connected?t('connected'):t('notConnected'));
+    if(disc)disc.style.display=d.connected?'block':'none';
+  }catch(e){
+    if(st)st.textContent=message||t('notConnected');
+    if(pill)pill.textContent='● '+t('notConnected');
+    if(disc)disc.style.display='none';
+  }
 }
 async function makeBackup(){
   return {
-    format:'chatway-backup',version:12,createdAt:new Date().toISOString(),
+    format:'chatway-backup',version:13,createdAt:new Date().toISOString(),
     language:currentLanguage,
     chats:await all('chats'),
     messages:await all('messages'),
-    localSettings:{
-      theme:localStorage.getItem('violet-theme')||'light',
-      callLog:localStorage.getItem('chatwayCallLogV1')||'[]'
-    }
+    localSettings:{theme:localStorage.getItem('violet-theme')||'light',callLog:localStorage.getItem('chatwayCallLogV1')||'[]'}
   };
 }
-async function listBackups(folderId=null){
-  folderId=folderId||await getDriveFolder();
-  const q=`'${qEsc(folderId)}' in parents and name contains 'chatway-backup-' and trashed=false`;
-  const r=await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=drive&pageSize=20&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime,size)&q='+encodeURIComponent(q));
-  return {folderId,files:(await r.json()).files||[]};
+async function connectGoogleDrive(){
+  if(driveBusy)return;
+  if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');
+  setDriveBusy(true,currentLanguage==='en'?'Opening Google in your browser...':'جاري فتح Google في المتصفح...');
+  try{
+    const d=await googleApi({body:{action:'auth_url'}});
+    if(!d.url)throw new Error('no_auth_url');
+    try{
+      if(window.Pi?.openUrlInSystemBrowser){
+        await Pi.openUrlInSystemBrowser(d.url);
+      }else{
+        location.href=d.url;
+      }
+    }catch{
+      location.href=d.url;
+    }
+  }catch(e){
+    console.error('Google connect',e);
+    toast(currentLanguage==='en'?'Could not open Google sign-in':'تعذر فتح تسجيل الدخول إلى Google');
+  }finally{setDriveBusy(false)}
 }
 async function backupGoogleDrive(){
-  if(driveBusy)return;setDriveBusy(true,currentLanguage==='en'?'Preparing backup...':'جاري تجهيز النسخة...');
+  if(driveBusy)return;
+  if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');
+  setDriveBusy(true,currentLanguage==='en'?'Preparing backup...':'جاري تجهيز النسخة...');
   try{
-    await requestGoogleToken(false);
-    const folderId=await getDriveFolder(),data=await makeBackup();
-    const name='chatway-backup-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
-    const metadata={name,parents:[folderId],mimeType:'application/json',appProperties:{app:'ChatWay',kind:'backup'}};
-    const boundary='cw'+Math.random().toString(36).slice(2);
-    const multipart=`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${boundary}--`;
-    await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime',{
-      method:'POST',headers:{'Content-Type':`multipart/related; boundary=${boundary}`},body:multipart
-    });
-    const allb=await listBackups(folderId);
-    for(const old of allb.files.slice(5))driveFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(old.id),{method:'DELETE'}).catch(()=>{});
-    const when=new Date().toLocaleString(getLocale());localStorage.setItem('chatway-last-drive-backup',when);
+    const backup=await makeBackup();
+    await googleApi({body:{action:'backup',backup}});
+    const when=new Date().toLocaleString(getLocale());
+    localStorage.setItem('chatway-last-drive-backup',when);
     $('#googleBackupInfo').textContent=(currentLanguage==='en'?'Last backup: ':'آخر نسخة: ')+when;
     toast(currentLanguage==='en'?'Backup uploaded to Google Drive':'تم رفع النسخة الاحتياطية إلى Google Drive');
+    await updateGoogleDriveUI();
   }catch(e){
-    console.error('Drive backup',e);
-    toast(e.message==='missing_GOOGLE_CLIENT_ID'?(currentLanguage==='en'?'Google Client ID is missing':'GOOGLE_CLIENT_ID غير مضاف في Vercel'):(currentLanguage==='en'?'Backup failed':'فشل النسخ الاحتياطي'));
-  }finally{setDriveBusy(false);updateGoogleDriveUI()}
+    console.error('backup',e);
+    if(e.status===401)return toast(currentLanguage==='en'?'Connect Google Drive first':'اربط Google Drive أولًا');
+    toast(currentLanguage==='en'?'Backup failed':'فشل النسخ الاحتياطي');
+  }finally{setDriveBusy(false)}
 }
 async function restoreGoogleDrive(){
   if(driveBusy)return;
-  const ok=confirm(currentLanguage==='en'?'Restore the latest Google Drive backup? Local chat data will be replaced.':'استعادة آخر نسخة من Google Drive؟ سيتم استبدال بيانات المحادثات المحلية.');
-  if(!ok)return;
-  setDriveBusy(true,currentLanguage==='en'?'Finding latest backup...':'جاري البحث عن أحدث نسخة...');
+  if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');
+  if(!confirm(currentLanguage==='en'?'Restore the latest Google Drive backup? Local chat data will be replaced.':'استعادة آخر نسخة من Google Drive؟ سيتم استبدال بيانات المحادثات المحلية.'))return;
+  setDriveBusy(true,currentLanguage==='en'?'Restoring latest backup...':'جاري استعادة أحدث نسخة...');
   try{
-    await requestGoogleToken(false);
-    const {files}=await listBackups();
-    if(!files.length)throw new Error('no_backup');
-    const newest=files[0];
-    const r=await driveFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(newest.id)+'?alt=media');
-    const data=await r.json();
-    if(data?.format!=='chatway-backup'||!Array.isArray(data.chats)||!Array.isArray(data.messages))throw new Error('bad_backup');
-
+    const d=await googleApi({body:{action:'restore_latest'}});
+    const data=d.backup;
+    if(!data||data.format!=='chatway-backup'||!Array.isArray(data.chats)||!Array.isArray(data.messages))throw new Error('bad_backup');
     await clearS('messages');await clearS('chats');
     for(const c of data.chats)await put('chats',c);
     for(const m of data.messages)await put('messages',m);
-
     if(data.localSettings?.theme)localStorage.setItem('violet-theme',data.localSettings.theme);
     if(data.localSettings?.callLog)localStorage.setItem('chatwayCallLogV1',data.localSettings.callLog);
     if(data.language)localStorage.setItem(LANGUAGE_KEY,data.language);
-
     applyTheme();applyLanguage(data.language||currentLanguage,false);
-    await repairChatMessageConsistency();
-    await renderChats($('#searchChats').value.trim());
-    if(typeof renderCallLog==='function')renderCallLog();
-    $('#googleBackupInfo').textContent=(currentLanguage==='en'?'Restored: ':'تمت الاستعادة: ')+new Date(newest.modifiedTime).toLocaleString(getLocale());
+    await repairChatMessageConsistency();await renderChats($('#searchChats').value.trim());renderCallLog();
+    $('#googleBackupInfo').textContent=(currentLanguage==='en'?'Restored: ':'تمت الاستعادة: ')+new Date(d.modifiedTime).toLocaleString(getLocale());
     toast(currentLanguage==='en'?'Latest backup restored':'تمت استعادة آخر نسخة احتياطية');
   }catch(e){
-    console.error('Drive restore',e);
-    toast(e.message==='no_backup'?(currentLanguage==='en'?'No ChatWay backup found':'لا توجد نسخة ChatWay احتياطية'):(currentLanguage==='en'?'Restore failed':'فشلت الاستعادة'));
-  }finally{setDriveBusy(false);updateGoogleDriveUI()}
+    console.error('restore',e);
+    if(e.status===401)return toast(currentLanguage==='en'?'Connect Google Drive first':'اربط Google Drive أولًا');
+    if(e.detail?.error==='no_backup'||e.message==='no_backup')return toast(currentLanguage==='en'?'No backup found':'لا توجد نسخة احتياطية');
+    toast(currentLanguage==='en'?'Restore failed':'فشلت الاستعادة');
+  }finally{setDriveBusy(false)}
 }
-async function connectGoogleDrive(){
-  if(driveBusy)return;setDriveBusy(true,currentLanguage==='en'?'Opening Google...':'جاري فتح Google...');
-  try{await requestGoogleToken(true);toast(currentLanguage==='en'?'Google Drive connected':'تم ربط Google Drive')}
-  catch(e){console.warn(e);toast(currentLanguage==='en'?'Google connection cancelled or failed':'تعذر ربط حساب Google')}
-  finally{setDriveBusy(false);updateGoogleDriveUI()}
-}
-function disconnectGoogleDrive(){
-  const done=()=>{googleAccessToken='';googleTokenExpiresAt=0;localStorage.removeItem(GOOGLE_LINK_KEY);updateGoogleDriveUI();toast(currentLanguage==='en'?'Google Drive disconnected':'تم فصل Google Drive')};
-  if(googleAccessToken&&window.google?.accounts?.oauth2?.revoke)google.accounts.oauth2.revoke(googleAccessToken,done);else done();
+async function disconnectGoogleDrive(){
+  if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');
+  try{
+    await googleApi({method:'DELETE'});
+    localStorage.removeItem(GOOGLE_LINK_KEY);
+    toast(currentLanguage==='en'?'Google Drive disconnected':'تم فصل Google Drive');
+    await updateGoogleDriveUI();
+  }catch(e){toast(currentLanguage==='en'?'Could not disconnect Google Drive':'تعذر فصل Google Drive')}
 }
 
 $('#connectGoogleDrive').onclick=connectGoogleDrive;
@@ -1286,6 +1254,19 @@ $('#backupToGoogleDrive').onclick=backupGoogleDrive;
 $('#restoreFromGoogleDrive').onclick=restoreGoogleDrive;
 $('#disconnectGoogleDrive').onclick=disconnectGoogleDrive;
 $('#languageSelect').onchange=e=>applyLanguage(e.target.value,true);
+
+// Returning from external browser OAuth.
+(async()=>{
+  const qp=new URL(location.href).searchParams;
+  if(qp.get('google')==='connected'){
+    history.replaceState({},'',location.pathname);
+    localStorage.setItem(GOOGLE_LINK_KEY,'1');
+    setTimeout(async()=>{
+      await updateGoogleDriveUI(currentLanguage==='en'?'Google Drive connected':'تم ربط Google Drive');
+      toast(currentLanguage==='en'?'Google Drive connected':'تم ربط Google Drive');
+    },500);
+  }
+})();
 
 const _lastDriveBackup=localStorage.getItem('chatway-last-drive-backup');
 if(_lastDriveBackup)$('#googleBackupInfo').textContent=(currentLanguage==='en'?'Last backup: ':'آخر نسخة: ')+_lastDriveBackup;
