@@ -256,6 +256,13 @@ radial-gradient(circle at 18px 18px, color-mix(in srgb,var(--purple) 5%,transpar
 .active-call-chip{position:fixed;z-index:175;top:76px;left:50%;transform:translateX(-50%);display:none;border:0;border-radius:999px;background:var(--yellow);color:#4a3900;font-weight:900;font-size:10px;padding:9px 13px;box-shadow:0 8px 25px #0003}
 .active-call-chip.active{display:block}
 
+
+/* ===== ChatWay v10 interaction reliability ===== */
+.msg-row,.chat-item{touch-action:pan-y;-webkit-touch-callout:none}
+.msg-row .bubble{-webkit-user-select:none;user-select:none}
+.context{z-index:175;max-width:min(88vw,320px)}
+.context button{-webkit-tap-highlight-color:transparent}
+.msg-row.longpress-active .bubble{transform:scale(.985)}
 </style>
 
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
@@ -645,19 +652,18 @@ async function renderChats(q=''){
       <div class="preview">${c.draft?'<b style="color:var(--danger)">مسودة: </b>'+esc(c.draft):esc(c.last||'ابدأ المحادثة')}</div>
     </div></div>`).join('');
   $$('.chat-item').forEach(x=>{
-    let pressTimer=null,sx=0,sy=0,longPressed=false;
-    const id=Number(x.dataset.id);
-    x.onclick=e=>{if(longPressed){longPressed=false;e.preventDefault();return}openChat(id)};
+    let timer=null,sx=0,sy=0,longPressed=false,pointerId=null;
+    const id=Number(x.dataset.id),cancel=()=>{clearTimeout(timer);timer=null};
+    x.onclick=e=>{if(longPressed){longPressed=false;e.preventDefault();e.stopPropagation();return}openChat(id)};
     x.oncontextmenu=e=>{e.preventDefault();openChatContext(id,e.clientX,e.clientY)};
-    x.addEventListener('touchstart',e=>{
-      sx=e.touches[0].clientX;sy=e.touches[0].clientY;longPressed=false;
-      pressTimer=setTimeout(()=>{longPressed=true;openChatContext(id,sx,sy)},520);
+    x.addEventListener('pointerdown',e=>{
+      if(e.pointerType==='mouse'&&e.button!==0)return;
+      sx=e.clientX;sy=e.clientY;pointerId=e.pointerId;longPressed=false;cancel();
+      timer=setTimeout(()=>{longPressed=true;try{navigator.vibrate?.(18)}catch{}openChatContext(id,sx,sy)},480);
     },{passive:true});
-    x.addEventListener('touchmove',e=>{
-      if(Math.abs(e.touches[0].clientX-sx)>10||Math.abs(e.touches[0].clientY-sy)>10)clearTimeout(pressTimer);
-    },{passive:true});
-    x.addEventListener('touchend',()=>clearTimeout(pressTimer),{passive:true});
-    x.addEventListener('touchcancel',()=>clearTimeout(pressTimer),{passive:true});
+    x.addEventListener('pointermove',e=>{if(pointerId!==e.pointerId)return;if(Math.abs(e.clientX-sx)>12||Math.abs(e.clientY-sy)>12)cancel()},{passive:true});
+    x.addEventListener('pointerup',e=>{if(pointerId!==e.pointerId)return;cancel();pointerId=null},{passive:true});
+    x.addEventListener('pointercancel',()=>{cancel();pointerId=null;longPressed=false},{passive:true});
   });
 }
 
@@ -670,8 +676,7 @@ async function openChatContext(id,x,y){
   menu.querySelector('[data-chat-action="pin"]').textContent=c.pinned?'📌 إلغاء التثبيت':'📌 تثبيت';
   menu.querySelector('[data-chat-action="mute"]').textContent=c.muted?'🔔 إلغاء الكتم':'🔕 كتم';
   menu.querySelector('[data-chat-action="block"]').textContent=c.blocked?'✅ إلغاء الحظر':'🚫 حظر';
-  menu.style.left=Math.max(8,Math.min(x,innerWidth-205))+'px';
-  menu.style.top=Math.max(75,Math.min(y,innerHeight-260))+'px';
+  const vw=window.visualViewport?.width||innerWidth,vh=window.visualViewport?.height||innerHeight;menu.style.left=Math.max(8,Math.min(x,vw-205))+'px';menu.style.top=Math.max(8,Math.min(y,vh-250))+'px';
   menu.classList.add('active');
 }
 async function deleteLocalChat(c){
@@ -828,18 +833,77 @@ return `<div class="msg-row ${m.sender==='me'?'me':'other'} ${m.mentioned?'menti
 function formatBytes(n){if(!n)return '0 KB';const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return `${n.toFixed(i?1:0)} ${u[i]}`}
 async function openExternalUrl(url){if(!url)return;try{if(window.Pi?.openUrlInSystemBrowser){await window.Pi.openUrlInSystemBrowser(url);return}}catch(e){console.warn('Pi system browser',e)}try{const w=window.open(url,'_blank','noopener,noreferrer');if(w)return}catch{}location.href=url}
 function bindCustomPlayers(){$$('[data-media-player]').forEach(w=>{if(w.dataset.boundPlayer==='1')return;w.dataset.boundPlayer='1';if(w.dataset.mediaPlayer==='video'){const v=w.querySelector('video'),center=w.querySelector('.player-play'),toggle=w.querySelector('.video-toggle'),range=w.querySelector('.video-range'),time=w.querySelector('.player-time'),full=w.querySelector('.video-full');const sync=()=>{const d=Number.isFinite(v.duration)?v.duration:0,cur=Number.isFinite(v.currentTime)?v.currentTime:0;range.value=d?String(Math.round(cur/d*1000)):'0';time.textContent=`${formatDuration(cur)} / ${formatDuration(d)}`;const playing=!v.paused&&!v.ended;center.textContent=playing?'❚❚':'▶';toggle.textContent=playing?'❚❚':'▶';center.style.opacity=playing?'.18':'1'};const flip=()=>v.paused?v.play().catch(()=>{}):v.pause();center.onclick=e=>{e.stopPropagation();flip()};toggle.onclick=e=>{e.stopPropagation();flip()};range.oninput=e=>{e.stopPropagation();if(Number.isFinite(v.duration))v.currentTime=(Number(range.value)/1000)*v.duration};full.onclick=e=>{e.stopPropagation();if(v.requestFullscreen)v.requestFullscreen().catch(()=>openViewer('video',v.src));else openViewer('video',v.src)};v.addEventListener('loadedmetadata',sync);v.addEventListener('timeupdate',sync);v.addEventListener('play',sync);v.addEventListener('pause',sync);v.addEventListener('ended',sync);v.onclick=e=>{e.stopPropagation();flip()};sync()}else{const a=w.querySelector('audio'),btn=w.querySelector('.audio-play'),range=w.querySelector('.audio-track'),time=w.querySelector('.audio-time');const sync=()=>{const d=Number.isFinite(a.duration)?a.duration:0,cur=Number.isFinite(a.currentTime)?a.currentTime:0;range.value=d?String(Math.round(cur/d*1000)):'0';time.textContent=`${formatDuration(cur)} / ${formatDuration(d)}`;btn.textContent=!a.paused&&!a.ended?'❚❚':'▶'};btn.onclick=e=>{e.stopPropagation();a.paused?a.play().catch(()=>{}):a.pause()};range.oninput=e=>{e.stopPropagation();if(Number.isFinite(a.duration))a.currentTime=(Number(range.value)/1000)*a.duration};a.addEventListener('loadedmetadata',sync);a.addEventListener('timeupdate',sync);a.addEventListener('play',sync);a.addEventListener('pause',sync);a.addEventListener('ended',sync);sync()}})}
-function bindMessageGestures(){let timer,startX=0,startY=0;$$('.msg-row').forEach(el=>{if(el.dataset.gestureBound==='1')return;el.dataset.gestureBound='1';el.onclick=e=>{if(selectionMode&&!e.target.closest('a,button,input,video,audio,.clickable-media')){toggleSelected(+el.dataset.id);e.stopPropagation()}};el.oncontextmenu=e=>{e.preventDefault();openContext(el,e.clientX,e.clientY)};el.addEventListener('touchstart',e=>{startX=e.touches[0].clientX;startY=e.touches[0].clientY;timer=setTimeout(()=>openContext(el,startX,startY),550)},{passive:true});el.addEventListener('touchmove',e=>{if(Math.abs(e.touches[0].clientX-startX)>10||Math.abs(e.touches[0].clientY-startY)>10)clearTimeout(timer)},{passive:true});el.addEventListener('touchend',async e=>{clearTimeout(timer);const x=e.changedTouches[0].clientX;if(Math.abs(x-startX)>70){selectedMessageId=+el.dataset.id;await setReply(selectedMessageId)}},{passive:true})});$$('.clickable-media').forEach(x=>{if(x.dataset.viewerBound==='1')return;x.dataset.viewerBound='1';x.onclick=e=>{e.stopPropagation();openViewer(x.dataset.kind,x.dataset.src)}});$$('.external-map').forEach(x=>{if(x.dataset.mapBound==='1')return;x.dataset.mapBound='1';x.onclick=e=>{e.preventDefault();e.stopPropagation();openExternalUrl(x.dataset.mapUrl||x.href)}})}
-async function openContext(el,x,y){selectedMessageId=+el.dataset.id;const msg=await get('messages',selectedMessageId),menu=$('#contextMenu'),pinBtn=menu.querySelector('[data-action="pin"]'),starBtn=menu.querySelector('[data-action="star"]');if(pinBtn)pinBtn.textContent=msg?.pinned?'📌 إزالة تثبيت الرسالة':'📌 تثبيت الرسالة';if(starBtn)starBtn.textContent=msg?.starred?'☆ إزالة النجمة':'⭐ تمييز بنجمة';menu.style.left=Math.min(x,innerWidth-190)+'px';menu.style.top=Math.min(y,innerHeight-300)+'px';menu.classList.add('active')}
-document.addEventListener('click',e=>{if(!e.target.closest('#contextMenu')&&!e.target.closest('.msg-row'))$('#contextMenu').classList.remove('active');if(!e.target.closest('#reactBar'))$('#reactBar').classList.remove('active')})
+function bindMessageGestures(){
+  $$('.msg-row').forEach(el=>{
+    if(el.dataset.gestureBound==='1')return;
+    el.dataset.gestureBound='1';
+    let timer=null,startX=0,startY=0,longPressed=false,pointerId=null;
+    const clearPress=()=>{clearTimeout(timer);timer=null;el.classList.remove('longpress-active')};
+    const interactive=t=>!!t.closest('button,input,a,video,audio,.player-bottom,.audio-player,.clickable-media');
 
-document.addEventListener('pointerdown',e=>{const context=$('#contextMenu'),react=$('#reactBar'),chatContext=$('#chatContextMenu');if(context?.classList.contains('active')&&!e.target.closest('#contextMenu'))context.classList.remove('active');if(react?.classList.contains('active')&&!e.target.closest('#reactBar'))react.classList.remove('active');if(chatContext?.classList.contains('active')&&!e.target.closest('#chatContextMenu'))chatContext.classList.remove('active')},{capture:true});
+    el.addEventListener('pointerdown',e=>{
+      if(selectionMode||interactive(e.target))return;
+      if(e.pointerType==='mouse'&&e.button!==0)return;
+      startX=e.clientX;startY=e.clientY;pointerId=e.pointerId;longPressed=false;clearPress();
+      timer=setTimeout(async()=>{
+        if(pointerId!==e.pointerId)return;
+        longPressed=true;el.classList.add('longpress-active');
+        try{navigator.vibrate?.(18)}catch{}
+        try{document.getSelection?.()?.removeAllRanges?.()}catch{}
+        await openContext(el,startX,startY);
+        setTimeout(()=>el.classList.remove('longpress-active'),100);
+      },480);
+    },{passive:true});
 
-async function setReply(id){const m=await get('messages',id);replyTo={id:m.id,clientId:m.clientId||'',userId:m.senderUserId||(m.sender==='me'?(window.__chatwayCloudUserId||''):''),text:replySnippet(m),sender:m.sender};$('#replyWho').textContent=m.sender==='me'?'الرد على نفسك':'الرد على الطرف الآخر';$('#replyText').textContent=replyTo.text;$('#replyPreview').classList.add('active');$('#messageInput').focus()}
+    el.addEventListener('pointermove',e=>{
+      if(pointerId!==e.pointerId)return;
+      if(Math.abs(e.clientX-startX)>12||Math.abs(e.clientY-startY)>12)clearPress();
+    },{passive:true});
+
+    el.addEventListener('pointerup',async e=>{
+      if(pointerId!==e.pointerId)return;
+      clearTimeout(timer);timer=null;
+      const dx=e.clientX-startX,dy=e.clientY-startY;
+      pointerId=null;el.classList.remove('longpress-active');
+      if(longPressed){longPressed=false;return}
+      if(Math.abs(dx)>72&&Math.abs(dy)<55&&!interactive(e.target)){
+        selectedMessageId=+el.dataset.id;await setReply(selectedMessageId);
+      }
+    },{passive:true});
+
+    el.addEventListener('pointercancel',()=>{pointerId=null;longPressed=false;clearPress()},{passive:true});
+    el.onclick=e=>{
+      if(longPressed){longPressed=false;e.preventDefault();e.stopPropagation();return}
+      if(selectionMode&&!interactive(e.target)){toggleSelected(+el.dataset.id);e.stopPropagation()}
+    };
+    el.oncontextmenu=e=>{if(interactive(e.target))return;e.preventDefault();openContext(el,e.clientX,e.clientY)};
+    el.addEventListener('dragstart',e=>e.preventDefault());
+  });
+  $$('.clickable-media').forEach(x=>{if(x.dataset.viewerBound==='1')return;x.dataset.viewerBound='1';x.onclick=e=>{e.stopPropagation();openViewer(x.dataset.kind,x.dataset.src)}});
+  $$('.external-map').forEach(x=>{if(x.dataset.mapBound==='1')return;x.dataset.mapBound='1';x.onclick=e=>{e.preventDefault();e.stopPropagation();openExternalUrl(x.dataset.mapUrl||x.href)}});
+  $$('.retry-msg').forEach(b=>{b.onclick=e=>{e.stopPropagation();window.chatwayRetryMessage?.(Number(b.dataset.retry))}});
+}
+async function openContext(el,x,y){
+  const id=Number(el?.dataset?.id||0);if(!id)return;
+  const msg=await get('messages',id);if(!msg||Number(msg.chatId)!==Number(activeChatId))return;
+  selectedMessageId=id;
+  const menu=$('#contextMenu'),pinBtn=menu.querySelector('[data-action="pin"]'),starBtn=menu.querySelector('[data-action="star"]');
+  if(pinBtn)pinBtn.textContent=msg.pinned?'📌 إزالة تثبيت الرسالة':'📌 تثبيت الرسالة';
+  if(starBtn)starBtn.textContent=msg.starred?'☆ إزالة النجمة':'⭐ تمييز بنجمة';
+  const vw=window.visualViewport?.width||innerWidth,vh=window.visualViewport?.height||innerHeight;
+  menu.classList.add('active');
+  const mw=Math.min(320,menu.offsetWidth||190),mh=Math.min(vh-16,menu.scrollHeight||410);
+  menu.style.left=Math.max(8,Math.min(Number(x)||8,vw-mw-8))+'px';
+  menu.style.top=Math.max(8,Math.min(Number(y)||80,vh-mh-8))+'px';
+}
+document.addEventListener('pointerdown',e=>{const context=$('#contextMenu'),react=$('#reactBar'),chatContext=$('#chatContextMenu');if(context?.classList.contains('active')&&!e.target.closest('#contextMenu'))context.classList.remove('active');if(react?.classList.contains('active')&&!e.target.closest('#reactBar'))react.classList.remove('active');if(chatContext?.classList.contains('active')&&!e.target.closest('#chatContextMenu'))chatContext.classList.remove('active')},{capture:true,passive:true});
+
+async function setReply(id){const m=await get('messages',id);if(!m||Number(m.chatId)!==Number(activeChatId))return;replyTo={id:m.id,clientId:m.clientId||'',userId:m.senderUserId||(m.sender==='me'?(window.__chatwayCloudUserId||''):''),text:replySnippet(m),sender:m.sender};$('#replyWho').textContent=m.sender==='me'?'الرد على نفسك':'الرد على الطرف الآخر';$('#replyText').textContent=replyTo.text;$('#replyPreview').classList.add('active');$('#messageInput').focus()}
 $('#cancelReply').onclick=()=>{replyTo=null;$('#replyPreview').classList.remove('active')}
-$$('#contextMenu button').forEach(b=>b.onclick=async()=>{const action=b.dataset.action,m=await get('messages',selectedMessageId);if(!isCloudReady()&&['reply','pin','forward','select','react','star','edit','deleteAll'].includes(action))return toast('سجّل الدخول بحساب Pi أولًا');$('#contextMenu').classList.remove('active');if(action==='reply')return setReply(m.id);if(action==='pin'){m.pinned=!m.pinned;if(m.pinned){const pins=(await all('messages')).filter(x=>Number(x.chatId)===Number(activeChatId)&&x.pinned&&x.id!==m.id).sort((a,b)=>a.createdAt-b.createdAt);while(pins.length>=5){const x=pins.shift();x.pinned=false;await put('messages',x)}}await put('messages',m);toast(m.pinned?'تم تثبيت الرسالة':'تمت إزالة تثبيت الرسالة');await renderPinned(activeChatId);return renderMessages('',activeChatId,{force:true})}if(action==='forward'){selectedIds=new Set([m.id]);return openForwardModal()}if(action==='select'){selectionMode=true;selectedIds=new Set([m.id]);updateSelectionUI();return renderMessages()}if(action==='react'){const r=$('#reactBar');r.style.left='20px';r.style.bottom='110px';r.classList.add('active');return}if(action==='star'){m.starred=!m.starred;await put('messages',m);return renderMessages()}if(action==='copy'){if(m.text)navigator.clipboard?.writeText(m.text);return toast('تم النسخ')}if(action==='edit'){if(m.sender!=='me'||m.type!=='text'||m.deleted)return toast('يمكن تعديل رسائلك النصية فقط');editMessageId=m.id;$('#editInput').value=m.text;$('#editModal').classList.add('active');return}if(action==='deleteMe'){await del('messages',m.id);return renderMessages()}if(action==='deleteAll'){m.deleted=true;m.text='';m.data='';await put('messages',m);return renderMessages()}})
+$$('#contextMenu button').forEach(b=>b.onclick=async()=>{const action=b.dataset.action,m=await get('messages',selectedMessageId);if(!isCloudReady()&&['reply','pin','forward','select','react','star','edit','deleteAll'].includes(action))return toast('سجّل الدخول بحساب Pi أولًا');$('#contextMenu').classList.remove('active');if(action==='reply')return setReply(m.id);if(action==='pin'){m.pinned=!m.pinned;if(m.pinned){const pins=(await all('messages')).filter(x=>Number(x.chatId)===Number(activeChatId)&&x.pinned&&x.id!==m.id).sort((a,b)=>a.createdAt-b.createdAt);while(pins.length>=5){const x=pins.shift();x.pinned=false;await put('messages',x)}}await put('messages',m);toast(m.pinned?'تم تثبيت الرسالة':'تمت إزالة تثبيت الرسالة');await renderPinned(activeChatId);return renderMessages('',activeChatId,{force:true})}if(action==='forward'){selectedIds=new Set([m.id]);return openForwardModal()}if(action==='select'){selectionMode=true;selectedIds=new Set([m.id]);updateSelectionUI();return renderMessages()}if(action==='react'){const r=$('#reactBar'),row=document.querySelector(`.msg-row[data-id="${m.id}"]`),rect=row?.getBoundingClientRect();r.style.bottom='auto';r.style.left=Math.max(8,Math.min(rect?.left||20,innerWidth-250))+'px';r.style.top=Math.max(70,Math.min((rect?.top||120)-52,innerHeight-70))+'px';r.classList.add('active');return}if(action==='star'){m.starred=!m.starred;await put('messages',m);return renderMessages()}if(action==='copy'){if(!m.text)return;try{await navigator.clipboard?.writeText(m.text);toast('تم النسخ')}catch{const ta=document.createElement('textarea');ta.value=m.text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();toast('تم النسخ')}return}if(action==='edit'){if(m.sender!=='me'||m.type!=='text'||m.deleted)return toast('يمكن تعديل رسائلك النصية فقط');editMessageId=m.id;$('#editInput').value=m.text;$('#editModal').classList.add('active');return}if(action==='deleteMe'){await del('messages',m.id);return renderMessages()}if(action==='deleteAll'){m.deleted=true;m.text='';m.data='';await put('messages',m);return renderMessages()}})
 $$('#reactBar button').forEach(b=>b.onclick=async()=>{if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');const m=await get('messages',selectedMessageId);m.reaction=m.reaction===b.textContent?'':b.textContent;await put('messages',m);$('#reactBar').classList.remove('active');renderMessages()})
 $('#cancelEdit').onclick=()=>$('#editModal').classList.remove('active');$('#saveEdit').onclick=async()=>{if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');const m=await get('messages',editMessageId);const t=$('#editInput').value.trim();if(t){m.text=t;m.edited=true;m.editCount=(m.editCount||0)+1;m.editedAt=Date.now();await put('messages',m);await renderMessages()}$('#editModal').classList.remove('active')}
-async function sendText(){const input=$('#messageInput'),text=input.value.trim();if(!text||!activeChatId)return;const now=Date.now();const chat=await get('chats',activeChatId);const id=await add('messages',{chatId:activeChatId,type:'text',text,sender:senderMode,senderName:senderMode==='other'?(chat.type==='group'?(chat.members||[])[0]||'عضو':''):undefined,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null});await updateChatAfterMessage(text,now,senderMode==='other');input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();playTone(senderMode==='me'?'send':'receive');if(senderMode==='me'){setTimeout(()=>advanceStatus(id,'delivered'),500);setTimeout(()=>advanceStatus(id,'read'),1400);if(botEnabled)simulateReply()} }
+async function sendText(){const input=$('#messageInput'),text=input.value.trim();if(!text||!activeChatId)return;const now=Date.now();const chat=await get('chats',activeChatId);const id=await add('messages',{chatId:activeChatId,type:'text',text,sender:senderMode,senderName:senderMode==='other'?(chat.type==='group'?(chat.members||[])[0]||'عضو':''):undefined,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,clientId:replyTo.clientId||'',userId:replyTo.userId||'',sender:replyTo.sender||'',text:replyTo.text}:null});await updateChatAfterMessage(text,now,senderMode==='other');input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();playTone(senderMode==='me'?'send':'receive');if(senderMode==='me'){setTimeout(()=>advanceStatus(id,'delivered'),500);setTimeout(()=>advanceStatus(id,'read'),1400);if(botEnabled)simulateReply()} }
 function updateMessageStatusDom(id,status){const row=document.querySelector(`.msg-row[data-id="${id}"]`),ticks=row?.querySelector('.ticks');if(!ticks)return;ticks.classList.toggle('read',status==='read');ticks.classList.toggle('delivery-failed',status==='failed');ticks.innerHTML=status==='pending'?'◷':status==='failed'?`<button class="retry-msg" data-retry="${id}">!</button>`:status==='sent'?'✓':'✓✓';const rb=ticks.querySelector('.retry-msg');if(rb)rb.onclick=e=>{e.stopPropagation();window.chatwayRetryMessage?.(id)}}
 async function advanceStatus(id,status){const m=await get('messages',id);if(!m)return;m.status=status;await put('messages',m);if(activeChatId===m.chatId)updateMessageStatusDom(m.id,m.status)}
 async function updateChatAfterMessage(last,now,incrementUnread=false){const c=await get('chats',activeChatId);c.updatedAt=now;c.last=last;c.draft='';if(incrementUnread&&!$('#chatView').classList.contains('active'))c.unread=(c.unread||0)+1;await put('chats',c);renderChats($('#searchChats').value.trim())}
@@ -851,7 +915,7 @@ $('#searchChatBtn').onclick=()=>$('#searchInChat').classList.toggle('active');$(
 $('#attachBtn').onclick=()=>$('#attachSheet').classList.add('active');$('#closeSheet').onclick=()=>$('#attachSheet').classList.remove('active');$('#attachSheet').onclick=e=>{if(e.target.id==='attachSheet')e.target.classList.remove('active')}
 $$('.sheet-action[data-accept]').forEach(b=>b.onclick=()=>{const i=$('#fileInput');i.accept=b.dataset.accept;i.value='';i.click();$('#attachSheet').classList.remove('active')});$('#cameraBtn').onclick=()=>{$('#cameraInput').value='';$('#cameraInput').click();$('#attachSheet').classList.remove('active')};$('#fileInput').onchange=e=>prepareFile(e.target.files[0]);$('#cameraInput').onchange=e=>prepareFile(e.target.files[0])
 function readFile(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)})}
-async function actuallySendFile(file){if(!file||!activeChatId)return;if(file.size>30*1024*1024)return toast('الحد الأقصى للملف 30MB');const data=await readFile(file);let type=file.type.startsWith('image/')?'image':file.type.startsWith('video/')?'video':file.type.startsWith('audio/')?'audio':'file';const now=Date.now();const chat=await get('chats',activeChatId);await add('messages',{chatId:activeChatId,type,name:file.name,mime:file.type,size:file.size,data,sender:senderMode,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null});const label=type==='image'?'📷 صورة':type==='video'?'🎥 فيديو':type==='audio'?'🎙️ صوت':'📄 '+file.name;await updateChatAfterMessage(label,now,senderMode==='other');replyTo=null;$('#replyPreview').classList.remove('active');await renderMessages();playTone(senderMode==='me'?'send':'receive')}
+async function actuallySendFile(file){if(!file||!activeChatId)return;if(file.size>30*1024*1024)return toast('الحد الأقصى للملف 30MB');const data=await readFile(file);let type=file.type.startsWith('image/')?'image':file.type.startsWith('video/')?'video':file.type.startsWith('audio/')?'audio':'file';const now=Date.now();const chat=await get('chats',activeChatId);await add('messages',{chatId:activeChatId,type,name:file.name,mime:file.type,size:file.size,data,sender:senderMode,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,clientId:replyTo.clientId||'',userId:replyTo.userId||'',sender:replyTo.sender||'',text:replyTo.text}:null});const label=type==='image'?'📷 صورة':type==='video'?'🎥 فيديو':type==='audio'?'🎙️ صوت':'📄 '+file.name;await updateChatAfterMessage(label,now,senderMode==='other');replyTo=null;$('#replyPreview').classList.remove('active');await renderMessages();playTone(senderMode==='me'?'send':'receive')}
 $('#micBtn').onclick=async()=>{if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');if(recording){mediaRecorder.stop();return}try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});mediaRecorder=new MediaRecorder(stream);recordChunks=[];mediaRecorder.ondataavailable=e=>recordChunks.push(e.data);mediaRecorder.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());recording=false;clearInterval(recordTimer);$('#recorder').classList.remove('active');$('#messageInput').style.display='';const blob=new Blob(recordChunks,{type:mediaRecorder.mimeType||'audio/webm'});const file=new File([blob],`voice-${Date.now()}.webm`,{type:blob.type});await actuallySendFile(file)};mediaRecorder.start();recording=true;recordStart=Date.now();$('#recorder').classList.add('active');$('#messageInput').style.display='none';recordTimer=setInterval(()=>{const s=Math.floor((Date.now()-recordStart)/1000);$('#recTime').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')},500)}catch(e){toast('تعذر الوصول للميكروفون في هذا المتصفح')}}
 function playTone(kind){if(!soundEnabled)return;try{const C=window.AudioContext||window.webkitAudioContext,a=new C(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=kind==='send'?660:520;g.gain.setValueAtTime(.05,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.12);o.start();o.stop(a.currentTime+.12)}catch{}}
 function openViewer(kind,src){zoom=1;$('#viewerContent').innerHTML=kind==='image'?`<img id="viewMedia" src="${src}">`:`<video id="viewMedia" src="${src}" controls autoplay playsinline></video>`;$('#viewer').classList.add('active')}$('#closeViewer').onclick=()=>$('#viewer').classList.remove('active');$('#zoomIn').onclick=()=>{zoom=Math.min(3,zoom+.25);const m=$('#viewMedia');if(m)m.style.transform=`scale(${zoom})`};$('#zoomOut').onclick=()=>{zoom=Math.max(.5,zoom-.25);const m=$('#viewMedia');if(m)m.style.transform=`scale(${zoom})`}
@@ -929,12 +993,12 @@ async function renderPinned(chatId=activeChatId){
 function toggleSelected(id){selectedIds.has(id)?selectedIds.delete(id):selectedIds.add(id);if(!selectedIds.size)selectionMode=false;updateSelectionUI();renderMessages()}
 function updateSelectionUI(){selectionMode=selectedIds.size>0;$('#multiToolbar').classList.toggle('active',selectionMode);$('#selectCount').textContent=`${selectedIds.size} محدد`}
 $('#exitSelect').onclick=()=>{selectedIds.clear();selectionMode=false;updateSelectionUI();renderMessages()}
-$('#selectAllBtn').onclick=async()=>{selectedIds=new Set((await all('messages')).filter(m=>m.chatId===activeChatId).map(m=>m.id));updateSelectionUI();renderMessages()}
-$('#starSelected').onclick=async()=>{for(const id of selectedIds){const m=await get('messages',id);if(m){m.starred=true;await put('messages',m)}}toast('تم تمييز الرسائل');$('#exitSelect').click()}
-$('#deleteSelected').onclick=async()=>{if(!confirm(`حذف ${selectedIds.size} رسالة؟`))return;for(const id of selectedIds)await del('messages',id);$('#exitSelect').click()}
+$('#selectAllBtn').onclick=async()=>{if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');selectedIds=new Set((await all('messages')).filter(m=>m.chatId===activeChatId).map(m=>m.id));updateSelectionUI();renderMessages()}
+$('#starSelected').onclick=async()=>{if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');for(const id of selectedIds){const m=await get('messages',id);if(m){m.starred=true;await put('messages',m)}}toast('تم تمييز الرسائل');$('#exitSelect').click()}
+$('#deleteSelected').onclick=async()=>{if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');if(!confirm(`حذف ${selectedIds.size} رسالة؟`))return;for(const id of selectedIds)await del('messages',id);$('#exitSelect').click()}
 $('#forwardSelected').onclick=()=>openForwardModal()
 async function openForwardModal(){const chats=(await all('chats')).filter(c=>c.id!==activeChatId&&!c.archived);$('#forwardChatList').innerHTML=chats.map(c=>`<button class="big-btn secondary forward-target" data-id="${c.id}" style="width:100%;margin-bottom:7px">${esc(c.name)}</button>`).join('')||'<div class="muted small">لا توجد محادثات أخرى.</div>';$('#forwardModal').classList.add('active');$$('.forward-target').forEach(b=>b.onclick=()=>forwardTo(+b.dataset.id))}
-async function forwardTo(chatId){const src=await all('messages'),now=Date.now();for(const id of selectedIds){const m=src.find(x=>x.id===id);if(!m)continue;const copy={...m};delete copy.id;copy.chatId=chatId;copy.createdAt=now+(Math.random()*10|0);copy.sender='me';copy.status='sent';copy.forwarded=true;copy.pinned=false;copy.reaction='';await add('messages',copy)}const c=await get('chats',chatId);c.updatedAt=now;c.last=`↪️ ${selectedIds.size} رسالة معاد توجيهها`;await put('chats',c);$('#forwardModal').classList.remove('active');toast('تمت إعادة التوجيه');$('#exitSelect').click();renderChats($('#searchChats').value.trim())}
+async function forwardTo(chatId){if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');const src=await all('messages'),now=Date.now();for(const id of selectedIds){const m=src.find(x=>x.id===id);if(!m)continue;const copy={...m};delete copy.id;copy.chatId=chatId;copy.createdAt=now+(Math.random()*10|0);copy.sender='me';copy.status='sent';copy.forwarded=true;copy.pinned=false;copy.reaction='';await add('messages',copy)}const c=await get('chats',chatId);c.updatedAt=now;c.last=`↪️ ${selectedIds.size} رسالة معاد توجيهها`;await put('chats',c);$('#forwardModal').classList.remove('active');toast('تمت إعادة التوجيه');$('#exitSelect').click();renderChats($('#searchChats').value.trim())}
 $('#cancelForward').onclick=()=>$('#forwardModal').classList.remove('active')
 
 async function prepareFile(file){if(!file)return;pendingFile=file;$('#previewName').textContent=file.name;$('#previewSize').textContent=formatBytes(file.size)+(file.type.startsWith('image/')?' • سيتم ضغط الصورة تلقائيًا':'');$('#previewIcon').textContent=file.type.startsWith('image/')?'🖼️':file.type.startsWith('video/')?'🎥':file.type.startsWith('audio/')?'🎵':'📄';$('#filePreviewModal').classList.add('active')}
@@ -1180,7 +1244,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       .on('broadcast',{event:'call_event'},({payload})=>handleCallEvent(payload));
     accountChannel.subscribe(status=>{
       if(status==='SUBSCRIBED'){syncCloudRooms().then(()=>pullPendingDeliveries()).catch(console.warn)}
-      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){console.warn('Account realtime channel',status);setTimeout(()=>{accountChannel=null;ensureAccountChannel().catch(()=>{})},1200)}
+      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){console.warn('Account realtime channel',status);accountChannel=null;setTimeout(()=>ensureAccountChannel().catch(()=>{}),1200)}
     });
     return accountChannel;
   }
@@ -1195,6 +1259,13 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     const chat=await localChatByRoom(p.roomId);if(!chat)return;
     const msgs=await all('messages'),m=msgs.find(x=>x.chatId===chat.id&&x.clientId===p.clientId&&x.sender==='me');
     if(!m)return;if(p.status==='read')m.status='read';else if(m.status!=='read')m.status='delivered';await put('messages',m);if(activeChatId===chat.id)updateMessageStatusDom(m.id,m.status);
+  }
+
+  async function deliveryAny(promises){
+    const results=await Promise.allSettled(promises);
+    if(results.some(r=>r.status==='fulfilled'))return results;
+    const first=results.find(r=>r.status==='rejected');
+    throw first?.reason||new Error('delivery_failed');
   }
 
   async function enqueueDelivery(chat,msg,storagePath=null){
@@ -1349,10 +1420,10 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId)return toast('سجّل الدخول بحساب Pi أولًا');if(chat.type==='group'&&chat.groupSettings?.onlyAdminsSend&&!['owner','admin'].includes(chat.myRole))return toast('فقط مشرفو المجموعة يمكنهم الإرسال');
     const input=$('#messageInput'),text=input.value.trim();if(!text)return;const now=Date.now(),clientId=uuid();
-    const msg={chatId:chat.id,clientId,type:'text',text,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
+    const msg={chatId:chat.id,clientId,type:'text',text,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,clientId:replyTo.clientId||'',userId:replyTo.userId||'',sender:replyTo.sender||'',text:replyTo.text}:null};
     const localMsgId=await add('messages',msg);msg.id=localMsgId;chat.updatedAt=now;chat.last=text;chat.draft='';await put('chats',chat);input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
     try{
-      await Promise.allSettled([sendCloudWire(chat,msg),enqueueDelivery(chat,msg)]);
+      await deliveryAny([sendCloudWire(chat,msg),enqueueDelivery(chat,msg)]);
       msg.status='sent';await put('messages',msg);updateMessageStatusDom(localMsgId,'sent');
     }catch(e){
       msg.status='failed';await put('messages',msg);updateMessageStatusDom(localMsgId,'failed');console.error('send',e);
@@ -1366,18 +1437,18 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId)return toast('سجّل الدخول بحساب Pi أولًا');
     if(!file||!activeChatId)return;if(file.size>30*1024*1024)return toast('الحد 30MB');
     const data=await readFile(file),type=file.type.startsWith('image/')?'image':file.type.startsWith('video/')?'video':file.type.startsWith('audio/')?'audio':'file';
-    const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type,name:file.name,mime:file.type,size:file.size,data,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
+    const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type,name:file.name,mime:file.type,size:file.size,data,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,clientId:replyTo.clientId||'',userId:replyTo.userId||'',sender:replyTo.sender||'',text:replyTo.text}:null};
     await add('messages',msg);const label=type==='image'?'📷 صورة':type==='video'?'🎥 فيديو':type==='audio'?'🎙️ صوت':'📄 '+file.name;chat.updatedAt=now;chat.last=label;chat.draft='';await put('chats',chat);replyTo=null;$('#replyPreview').classList.remove('active');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
     try{toast('جاري إرسال الملف…');const storagePath=await uploadDeliveryFile(chat,file,clientId);
-      await Promise.allSettled([enqueueDelivery(chat,msg,storagePath),sendEvent(chat,'media_ready',{wire:wireBase(msg),storagePath,fromUserId:cloud.user.id})]);
-      msg.status='sent';await put('messages',msg);const row=(await all('messages')).find(x=>x.clientId===clientId&&x.chatId===chat.id);if(row)updateMessageStatusDom(row.id,'sent');toast('تم إرسال الملف')}catch(e){console.error('file queue',e);msg.status='failed';await put('messages',msg);const row=(await all('messages')).find(x=>x.clientId===clientId&&x.chatId===chat.id);if(row)updateMessageStatusDom(row.id,'failed');toast('سيتم إعادة الإرسال تلقائيًا')}
+      await deliveryAny([enqueueDelivery(chat,msg,storagePath),sendEvent(chat,'media_ready',{wire:wireBase(msg),storagePath,fromUserId:cloud.user.id})]);
+      msg.status='sent';await put('messages',msg);const row=(await all('messages')).find(x=>x.clientId===clientId&&Number(x.chatId)===Number(chat.id));if(row)updateMessageStatusDom(row.id,'sent');toast('تم إرسال الملف')}catch(e){console.error('file queue',e);msg.status='failed';await put('messages',msg);const row=(await all('messages')).find(x=>x.clientId===clientId&&Number(x.chatId)===Number(chat.id));if(row)updateMessageStatusDom(row.id,'failed');toast('سيتم إعادة الإرسال تلقائيًا')}
   };
 
   const originalLocation=sendCurrentLocation;
   sendCurrentLocation=async function(){
     if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId)return toast('سجّل الدخول بحساب Pi أولًا');if(!navigator.geolocation)return toast('المتصفح لا يدعم GPS');toast('جاري طلب إذن الموقع…');
-    navigator.geolocation.getCurrentPosition(async pos=>{const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:'location',lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null};await add('messages',msg);chat.updatedAt=now;chat.last='📍 موقع حالي';await put('chats',chat);await renderMessages();await renderChats($('#searchChats').value.trim());try{await Promise.allSettled([sendCloudWire(chat,msg),enqueueDelivery(chat,msg)]);msg.status='sent';await put('messages',msg)}catch(e){msg.status='failed';await put('messages',msg);console.warn(e);toast('سيتم إعادة الإرسال تلقائيًا')}},err=>toast(err.code===1?'تم رفض إذن الموقع':'تعذر تحديد الموقع'),{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+    navigator.geolocation.getCurrentPosition(async pos=>{const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:'location',lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null};await add('messages',msg);chat.updatedAt=now;chat.last='📍 موقع حالي';await put('chats',chat);await renderMessages();await renderChats($('#searchChats').value.trim());try{await deliveryAny([sendCloudWire(chat,msg),enqueueDelivery(chat,msg)]);msg.status='sent';await put('messages',msg)}catch(e){msg.status='failed';await put('messages',msg);console.warn(e);toast('سيتم إعادة الإرسال تلقائيًا')}},err=>toast(err.code===1?'تم رفض إذن الموقع':'تعذر تحديد الموقع'),{enableHighAccuracy:true,timeout:15000,maximumAge:0});
   };
 
   const originalRenderEmoji=renderEmoji;
@@ -1461,7 +1532,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       await openChat(chat.id);
       const now=Date.now(),sys={chatId:chat.id,clientId:uuid(),type:'system',text:`@${cloud.user.username} أنشأ المجموعة`,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending'};
       const sid=await add('messages',sys);await renderMessages();
-      try{await Promise.allSettled([sendCloudWire(chat,sys),enqueueDelivery(chat,sys)]);sys.id=sid;sys.status='sent';await put('messages',sys)}catch{}
+      try{await deliveryAny([sendCloudWire(chat,sys),enqueueDelivery(chat,sys)]);sys.id=sid;sys.status='sent';await put('messages',sys)}catch{}
     }toast('تم إنشاء المجموعة')}catch(e){console.error(e);toast(e.message||'تعذر إنشاء المجموعة')}finally{btn.disabled=false;btn.textContent='إنشاء'}};
 
 
@@ -1518,12 +1589,12 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
         const blob=await (await fetch(msg.data)).blob();
         const file=new File([blob],msg.name||`file-${Date.now()}`,{type:msg.mime||blob.type||'application/octet-stream'});
         const storagePath=await uploadDeliveryFile(chat,file,msg.clientId);
-        await Promise.allSettled([
+        await deliveryAny([
           enqueueDelivery(chat,msg,storagePath),
           sendEvent(chat,'media_ready',{wire:wireBase(msg),storagePath,fromUserId:cloud.user.id})
         ]);
       }else{
-        await Promise.allSettled([enqueueDelivery(chat,msg),sendCloudWire(chat,msg)]);
+        await deliveryAny([enqueueDelivery(chat,msg),sendCloudWire(chat,msg)]);
       }
       msg.status='sent';await put('messages',msg);updateMessageStatusDom(id,'sent');
     }catch(e){
