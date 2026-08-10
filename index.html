@@ -163,7 +163,7 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
       <button class="chip" data-filter="favorite">المفضلة</button>
       <button class="chip" data-filter="archived">المؤرشفة</button>
     </div>
-    <div class="cloud-banner" id="cloudBanner"><span>☁️</span><span>سجّل بـ <strong>Pi</strong> للبحث باسم المستخدم ومحادثات Online. محتوى الرسائل يظل محليًا.</span></div>
+    <div class="cloud-banner" id="cloudBanner"><span>☁️</span><span>سجّل بـ <strong>Pi</strong> للبحث باسم المستخدم ومحادثات فورية مع تسليم Offline مؤقت.</span></div>
     <div class="archived-banner" id="archivedBanner"><span>📥</span><span>المحادثات المؤرشفة</span><b id="archivedCount">0</b></div>
     <div class="storage-warning" id="storageWarning"></div>
     <div class="chat-list" id="chatList"></div>
@@ -625,6 +625,7 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
   const CLOUD_KEY = 'violetPiCloudSessionV1';
   const channels = new Map();
   const transfers = new Map();
+  let accountChannel = null, syncInterval = null, pullingPending = false;
   let cloud = { token:null, user:null, supabaseUrl:null, supabaseKey:null, expiresAt:0, client:null };
   let cloudSearchTimer = null, typingTimer = null, refreshTimer = null;
 
@@ -652,13 +653,18 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
     $('#syncPill').classList.toggle('show',logged);
     $('#settingsPiLogin').style.display=logged?'none':'';
     $('#cloudLogout').style.display=logged?'':'none';
-    $('#cloudBanner').innerHTML=logged?`<span>🔐</span><span>متصل كـ <strong>@${esc(cloud.user.username)}</strong> — الرسائل والوسائط تُنقل لحظيًا وتُحفظ محليًا فقط.</span>`:`<span>☁️</span><span>سجّل بـ <strong>Pi</strong> للبحث باسم المستخدم ومحادثات Online. محتوى الرسائل يظل محليًا.</span>`;
+    $('#cloudBanner').innerHTML=logged?`<span>🔐</span><span>متصل كـ <strong>@${esc(cloud.user.username)}</strong> — الرسائل تصل لحظيًا، ولو الطرف الآخر Offline تنتظر مؤقتًا حتى يفتح التطبيق ثم تُحفظ على جهازه.</span>`:`<span>☁️</span><span>سجّل بـ <strong>Pi</strong> للبحث باسم المستخدم ومحادثات فورية مع تسليم Offline مؤقت.</span>`;
     $('#newChatHint').textContent=logged?'اكتب اسم مستخدم Pi واختره من النتائج.':'بدون Pi سيتم إنشاء محادثة محلية على هذا الجهاز فقط.';
     $('#openGroupModal').textContent=logged?'👥 إنشاء مجموعة Pi':'👥 إنشاء مجموعة محلية';
   }
   function makeClient(){
     if(!cloud.supabaseUrl||!cloud.supabaseKey||!window.supabase?.createClient)return null;
-    cloud.client = window.supabase.createClient(cloud.supabaseUrl,cloud.supabaseKey,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},realtime:{params:{eventsPerSecond:20}}});
+    channels.clear();accountChannel=null;
+    cloud.client = window.supabase.createClient(cloud.supabaseUrl,cloud.supabaseKey,{
+      auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},
+      global:{headers:{Authorization:`Bearer ${cloud.token}`}},
+      realtime:{params:{eventsPerSecond:20}}
+    });
     cloud.client.realtime.setAuth(cloud.token);
     return cloud.client;
   }
@@ -667,7 +673,7 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
       const raw=JSON.parse(localStorage.getItem(CLOUD_KEY)||'null'); if(!raw?.token)return renderCloudUI();
       const claims=decodeJwt(raw.token); if(!claims?.exp||claims.exp*1000<Date.now()+30000){localStorage.removeItem(CLOUD_KEY);return renderCloudUI()}
       cloud={...cloud,...raw};makeClient();renderCloudUI();
-      await syncCloudRooms(); scheduleRefresh();
+      await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();scheduleRefresh();
     }catch(e){console.warn('restore cloud',e);logoutCloud(false)}
   }
   function scheduleRefresh(){
@@ -684,16 +690,18 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
       const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken:auth.accessToken})});
       cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;
       sessionStorage.setItem('violetPiAccessToken',auth.accessToken);
-      makeClient();saveCloud();renderCloudUI();await syncCloudRooms();scheduleRefresh();toast(`أهلاً @${cloud.user.username}`);
+      makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();scheduleRefresh();toast(`أهلاً @${cloud.user.username}`);
     }catch(e){console.error('Pi login',e);toast(e.message==='pi_unauthorized'?'تعذر التحقق من حساب Pi':'فشل تسجيل الدخول بـ Pi')}
     finally{buttons.forEach(b=>{if(b)b.disabled=false})}
   }
   async function refreshPiSession(){
     const accessToken=sessionStorage.getItem('violetPiAccessToken');if(!accessToken)return false;
-    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await syncCloudRooms();scheduleRefresh();return true}catch{return false}
+    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();scheduleRefresh();return true}catch{return false}
   }
   async function logoutCloud(show=true){
-    for(const ch of channels.values()){try{await cloud.client?.removeChannel(ch)}catch{}}channels.clear();clearTimeout(refreshTimer);
+    for(const ch of channels.values()){try{await cloud.client?.removeChannel(ch)}catch{}}channels.clear();
+    if(accountChannel){try{await cloud.client?.removeChannel(accountChannel)}catch{}accountChannel=null}
+    clearTimeout(refreshTimer);clearInterval(syncInterval);syncInterval=null;
     cloud={token:null,user:null,supabaseUrl:null,supabaseKey:null,expiresAt:0,client:null};localStorage.removeItem(CLOUD_KEY);sessionStorage.removeItem('violetPiAccessToken');renderCloudUI();if(show)toast('تم تسجيل الخروج من Pi');
   }
 
@@ -714,6 +722,84 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
     if(!isCloudReady())return;
     try{const data=given?{rooms:given}:await api('/api/rooms');await materializeRooms(data.rooms||[])}catch(e){console.warn('room sync',e);if(e.status===401){if(!(await refreshPiSession()))logoutCloud(false)}}
   }
+
+  async function ensureAccountChannel(){
+    if(!isCloudReady())return null;
+    if(accountChannel)return accountChannel;
+    await cloud.client.realtime.setAuth(cloud.token);
+    const topic=`user:${cloud.user.id}`;
+    accountChannel=cloud.client.channel(topic,{config:{private:true,broadcast:{ack:true,self:false}}});
+    accountChannel
+      .on('broadcast',{event:'delivery_available'},async()=>{await pullPendingDeliveries()})
+      .on('broadcast',{event:'room_changed'},async()=>{await syncCloudRooms();await pullPendingDeliveries()})
+      .on('broadcast',{event:'delivery_receipt'},({payload})=>receiveAccountReceipt(payload));
+    accountChannel.subscribe(status=>{
+      if(status==='SUBSCRIBED'){syncCloudRooms().then(()=>pullPendingDeliveries()).catch(console.warn)}
+      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('Account realtime channel',status);
+    });
+    return accountChannel;
+  }
+
+  function startBackgroundSync(){
+    clearInterval(syncInterval);
+    syncInterval=setInterval(()=>{if(document.visibilityState==='visible'&&isCloudReady()){syncCloudRooms().then(()=>pullPendingDeliveries()).catch(()=>{})}},15000);
+  }
+
+  async function receiveAccountReceipt(p){
+    if(!p?.clientId)return;
+    const chat=await localChatByRoom(p.roomId);if(!chat)return;
+    const msgs=await all('messages'),m=msgs.find(x=>x.chatId===chat.id&&x.clientId===p.clientId&&x.sender==='me');
+    if(!m)return;if(p.status==='read')m.status='read';else if(m.status!=='read')m.status='delivered';await put('messages',m);if(activeChatId===chat.id)renderMessages();
+  }
+
+  async function enqueueDelivery(chat,msg,storagePath=null){
+    const payload=wireBase(msg);
+    delete payload.data;
+    const d=await api('/api/messages',{method:'POST',body:JSON.stringify({action:'enqueue',roomId:chat.cloudRoomId,clientId:payload.clientId,payload,storagePath})});
+    return d;
+  }
+
+  async function ackPending(roomId,clientId){
+    if(!isCloudReady()||!roomId||!clientId)return;
+    try{await api('/api/messages',{method:'POST',body:JSON.stringify({action:'ack',roomId,clientId})})}catch(e){console.warn('delivery ack',e)}
+  }
+
+  async function blobToDataURL(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)})}
+
+  async function uploadDeliveryFile(file,clientId){
+    const safe=(file.name||'file').replace(/[^\w.\-\u0600-\u06FF]+/g,'_').slice(-120)||'file';
+    const path=`${cloud.user.id}/${clientId}/${Date.now()}-${safe}`;
+    const {error}=await cloud.client.storage.from('violet-delivery').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false,cacheControl:'3600'});
+    if(error)throw new Error(error.message||'storage_upload_failed');
+    return path;
+  }
+
+  async function downloadDeliveryFile(path){
+    const {data,error}=await cloud.client.storage.from('violet-delivery').download(path);
+    if(error)throw new Error(error.message||'storage_download_failed');
+    return blobToDataURL(data);
+  }
+
+  async function pullPendingDeliveries(){
+    if(!isCloudReady()||pullingPending)return;
+    pullingPending=true;
+    try{
+      const d=await api('/api/messages');
+      for(const row of (d.deliveries||[])){
+        let chat=await localChatByRoom(row.room_id);
+        if(!chat){await syncCloudRooms();chat=await localChatByRoom(row.room_id)}
+        if(!chat)continue;
+        const wire={...(row.payload||{}),clientId:row.client_id};
+        let data='';
+        try{if(row.storage_path)data=await downloadDeliveryFile(row.storage_path);await saveIncoming(row.room_id,wire,data);await ackPending(row.room_id,row.client_id)}
+        catch(e){console.warn('pending delivery failed',row.id,e);}
+      }
+    }catch(e){if(e.status===401){if(!(await refreshPiSession()))logoutCloud(false)}else console.warn('pull pending',e)}
+    finally{pullingPending=false}
+  }
+
+  window.addEventListener('focus',()=>{if(isCloudReady())syncCloudRooms().then(()=>pullPendingDeliveries()).catch(()=>{})});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isCloudReady())syncCloudRooms().then(()=>pullPendingDeliveries()).catch(()=>{})});
 
   async function ensureRoomChannel(chat){
     if(!isCloudReady()||!chat?.cloudRoomId)return null;
@@ -769,7 +855,7 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
   function mediaStart(roomId,p){if(!p||p.fromUserId===cloud.user?.id)return;transfers.set(`${roomId}:${p.transferId}`,{roomId,meta:p,chunks:new Array(p.total),received:0})}
   function mediaChunk(roomId,p){const t=transfers.get(`${roomId}:${p.transferId}`);if(!t||typeof p.index!=='number')return;if(t.chunks[p.index]===undefined){t.chunks[p.index]=p.data||'';t.received++}}
   async function mediaEnd(roomId,p){const key=`${roomId}:${p.transferId}`,t=transfers.get(key);if(!t)return;if(t.received!==t.chunks.length){setTimeout(()=>mediaEnd(roomId,p),500);return}transfers.delete(key);await saveIncoming(roomId,t.meta,t.chunks.join(''))}
-  async function receiveReceipt(roomId,p){if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(!chat)return;const msgs=await all('messages'),m=msgs.find(x=>x.chatId===chat.id&&x.clientId===p.clientId&&x.sender==='me');if(!m)return;m.status=p.status==='read'?'read':'delivered';await put('messages',m);if(activeChatId===chat.id)renderMessages()}
+  async function receiveReceipt(roomId,p){if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(!chat)return;const msgs=await all('messages'),m=msgs.find(x=>x.chatId===chat.id&&x.clientId===p.clientId&&x.sender==='me');if(!m)return;if(p.status==='read')m.status='read';else if(m.status!=='read')m.status='delivered';await put('messages',m);if(activeChatId===chat.id)renderMessages()}
   async function receiveTyping(roomId,p){if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(chat&&activeChatId===chat.id)$('#chatStatus').textContent=p.typing?`${p.username||'الطرف الآخر'} يكتب الآن...`:'متصل الآن'}
   async function receiveControl(roomId,p){
     if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(!chat)return;const msgs=await all('messages'),m=msgs.find(x=>x.chatId===chat.id&&x.clientId===p.clientId);if(!m)return;
@@ -779,7 +865,7 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
     await put('messages',m);if(activeChatId===chat.id)renderMessages();
   }
   async function updatePresence(roomId,ch){
-    const chat=await localChatByRoom(roomId);if(!chat||activeChatId!==chat.id)return;const state=ch.presenceState();const online=Object.keys(state||{}).some(k=>k!==cloud.user.id);$('#chatStatus').textContent=online?'متصل الآن':'غير متصل — الرسائل الجديدة تحتاج أن يكون الطرفان Online';
+    const chat=await localChatByRoom(roomId);if(!chat||activeChatId!==chat.id)return;const state=ch.presenceState();const online=Object.keys(state||{}).some(k=>k!==cloud.user.id);$('#chatStatus').textContent=online?'متصل الآن':'غير متصل — سيتم تسليم الرسائل عند فتح التطبيق';
   }
 
   async function searchPiUsers(q){if(!isCloudReady()||q.trim().length<2){$('#cloudUserResults').innerHTML='';return []}try{const d=await api('/api/users?q='+encodeURIComponent(q.trim()));return d.users||[]}catch(e){console.warn(e);return []}}
@@ -803,27 +889,32 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalSendText();
     const input=$('#messageInput'),text=input.value.trim();if(!text)return;const now=Date.now(),clientId=uuid();
     const msg={chatId:chat.id,clientId,type:'text',text,sender:'me',createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
-    const id=await add('messages',msg);chat.updatedAt=now;chat.last=text;chat.draft='';await put('chats',chat);input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
-    try{await sendCloudWire(chat,{...msg,id});const stored=await get('messages',id);stored.status='delivered';await put('messages',stored);renderMessages()}catch(e){console.warn(e);toast('الرسالة محفوظة محليًا؛ الطرف الآخر غير متصل أو القناة غير متاحة')}
+    await add('messages',msg);chat.updatedAt=now;chat.last=text;chat.draft='';await put('chats',chat);input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
+    try{await enqueueDelivery(chat,msg)}catch(e){console.error('queue send',e);toast('الرسالة محفوظة محليًا لكن تعذر وضعها في صندوق التسليم')}
   };
   $('#sendBtn').onclick=sendText;
 
   const originalSendFile=actuallySendFile;
   actuallySendFile=async function(file){
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalSendFile(file);
-    if(!file||!activeChatId)return;if(file.size>30*1024*1024)return toast('الحد المحلي للملف 30MB');const data=await readFile(file);let type=file.type.startsWith('image/')?'image':file.type.startsWith('video/')?'video':file.type.startsWith('audio/')?'audio':'file';const now=Date.now(),clientId=uuid();const msg={chatId:chat.id,clientId,type,name:file.name,mime:file.type,size:file.size,data,sender:'me',createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};const id=await add('messages',msg);const label=type==='image'?'📷 صورة':type==='video'?'🎥 فيديو':type==='audio'?'🎙️ صوت':'📄 '+file.name;chat.updatedAt=now;chat.last=label;chat.draft='';await put('chats',chat);replyTo=null;$('#replyPreview').classList.remove('active');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');try{await sendCloudWire(chat,{...msg,id});const stored=await get('messages',id);stored.status='delivered';await put('messages',stored);renderMessages()}catch(e){console.warn(e);toast('الملف محفوظ على جهازك لكن لم يصل للطرف الآخر')}
+    if(!file||!activeChatId)return;if(file.size>30*1024*1024)return toast('الحد 30MB');
+    const data=await readFile(file),type=file.type.startsWith('image/')?'image':file.type.startsWith('video/')?'video':file.type.startsWith('audio/')?'audio':'file';
+    const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type,name:file.name,mime:file.type,size:file.size,data,sender:'me',createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
+    await add('messages',msg);const label=type==='image'?'📷 صورة':type==='video'?'🎥 فيديو':type==='audio'?'🎙️ صوت':'📄 '+file.name;chat.updatedAt=now;chat.last=label;chat.draft='';await put('chats',chat);replyTo=null;$('#replyPreview').classList.remove('active');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
+    try{toast('جاري تجهيز الملف للتسليم…');const storagePath=await uploadDeliveryFile(file,clientId);await enqueueDelivery(chat,msg,storagePath);toast('تم وضع الملف في صندوق التسليم')}catch(e){console.error('file queue',e);toast('الملف محفوظ على جهازك لكن تعذر رفع نسخة التسليم المؤقتة')}
   };
 
   const originalLocation=sendCurrentLocation;
   sendCurrentLocation=async function(){
-    const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalLocation();if(!navigator.geolocation)return toast('المتصفح لا يدعم GPS');toast('جاري طلب إذن الموقع…');navigator.geolocation.getCurrentPosition(async pos=>{const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:'location',lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,sender:'me',createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null};const id=await add('messages',msg);chat.updatedAt=now;chat.last='📍 موقع حالي';await put('chats',chat);await renderMessages();await renderChats($('#searchChats').value.trim());try{await sendCloudWire(chat,{...msg,id})}catch{toast('الموقع محفوظ محليًا ولم يصل للطرف الآخر')}},err=>toast(err.code===1?'تم رفض إذن الموقع':'تعذر تحديد الموقع'),{enableHighAccuracy:true,timeout:15000,maximumAge:0})
+    const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalLocation();if(!navigator.geolocation)return toast('المتصفح لا يدعم GPS');toast('جاري طلب إذن الموقع…');
+    navigator.geolocation.getCurrentPosition(async pos=>{const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:'location',lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,sender:'me',createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null};await add('messages',msg);chat.updatedAt=now;chat.last='📍 موقع حالي';await put('chats',chat);await renderMessages();await renderChats($('#searchChats').value.trim());try{await enqueueDelivery(chat,msg)}catch(e){console.warn(e);toast('الموقع محفوظ محليًا وتعذر وضعه في صندوق التسليم')}},err=>toast(err.code===1?'تم رفض إذن الموقع':'تعذر تحديد الموقع'),{enableHighAccuracy:true,timeout:15000,maximumAge:0});
   };
 
   const originalRenderEmoji=renderEmoji;
   renderEmoji=function(kind='emoji'){
     const chatPromise=activeChatId?get('chats',activeChatId):Promise.resolve(null);
     $('#emojiGrid').innerHTML=emojiSets[kind].map(x=>`<button class="${kind==='sticker'?'sticker':''}" data-kind="${kind}">${esc(x)}</button>`).join('');
-    $$('#emojiGrid button').forEach(b=>b.onclick=async()=>{const k=b.dataset.kind,chat=await chatPromise;if(k==='emoji'){$('#messageInput').value+=b.textContent;$('#messageInput').dispatchEvent(new Event('input'))}else if(chat?.cloudRoomId&&isCloudReady()){const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:k,text:b.textContent,sender:'me',createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null};await add('messages',msg);chat.updatedAt=now;chat.last=k==='sticker'?'🧸 ملصق':'🎞️ GIF';await put('chats',chat);await renderMessages();renderChats($('#searchChats').value.trim());try{await sendCloudWire(chat,msg)}catch{toast('المحتوى محفوظ محليًا ولم يصل للطرف الآخر')}}else{const now=Date.now(),c=chat;await add('messages',{chatId:activeChatId,type:k,text:b.textContent,sender:senderMode,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:c?.disappearMs?now+c.disappearMs:null});await updateChatAfterMessage(k==='sticker'?'🧸 ملصق':'🎞️ GIF',now,false);renderMessages()}$('#emojiPanel').classList.remove('active')})
+    $$('#emojiGrid button').forEach(b=>b.onclick=async()=>{const k=b.dataset.kind,chat=await chatPromise;if(k==='emoji'){$('#messageInput').value+=b.textContent;$('#messageInput').dispatchEvent(new Event('input'))}else if(chat?.cloudRoomId&&isCloudReady()){const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:k,text:b.textContent,sender:'me',createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null};await add('messages',msg);chat.updatedAt=now;chat.last=k==='sticker'?'🧸 ملصق':'🎞️ GIF';await put('chats',chat);await renderMessages();renderChats($('#searchChats').value.trim());try{await enqueueDelivery(chat,msg)}catch{toast('المحتوى محفوظ محليًا وتعذر وضعه في صندوق التسليم')}}else{const now=Date.now(),c=chat;await add('messages',{chatId:activeChatId,type:k,text:b.textContent,sender:senderMode,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:c?.disappearMs?now+c.disappearMs:null});await updateChatAfterMessage(k==='sticker'?'🧸 ملصق':'🎞️ GIF',now,false);renderMessages()}$('#emojiPanel').classList.remove('active')})
   };
   $('#emojiBtn').onclick=()=>{$('#emojiPanel').classList.toggle('active');renderEmoji('emoji')};$$('.emoji-tabs button').forEach(b=>b.onclick=()=>renderEmoji(b.dataset.ep));
 
@@ -845,7 +936,7 @@ window.addEventListener('error',e=>console.error('Violet runtime error:',e.error
   $$('#reactBar button').forEach(btn=>{const old=btn.onclick;btn.onclick=async e=>{const id=selectedMessageId,chat=activeChatId?await get('chats',activeChatId):null;await old?.call(btn,e);const m=id?await get('messages',id):null;if(chat?.cloudRoomId&&isCloudReady()&&m?.clientId)sendEvent(chat,'control',{action:'reaction',clientId:m.clientId,reaction:m.reaction,fromUserId:cloud.user.id}).catch(()=>{})}});
 
   const oldForwardTo=forwardTo;
-  forwardTo=async function(chatId){const chosen=(await all('messages')).filter(m=>selectedIds.has(m.id)).map(m=>({...m}));await oldForwardTo(chatId);const target=await get('chats',chatId);if(target?.cloudRoomId&&isCloudReady()){for(const m of chosen){const copy={...m,clientId:uuid(),createdAt:Date.now(),sender:'me',forwarded:true};delete copy.id;delete copy.chatId;try{await sendCloudWire(target,copy)}catch{}}}};
+  forwardTo=async function(chatId){const chosen=(await all('messages')).filter(m=>selectedIds.has(m.id)).map(m=>({...m}));await oldForwardTo(chatId);const target=await get('chats',chatId);if(target?.cloudRoomId&&isCloudReady()){for(const m of chosen){const copy={...m,clientId:uuid(),createdAt:Date.now(),sender:'me',forwarded:true};delete copy.id;delete copy.chatId;try{let storagePath=null;if(['image','video','audio','file'].includes(copy.type)&&copy.data){const blob=await (await fetch(copy.data)).blob();const file=new File([blob],copy.name||`forward-${Date.now()}`,{type:copy.mime||blob.type||'application/octet-stream'});storagePath=await uploadDeliveryFile(file,copy.clientId)}await enqueueDelivery(target,copy,storagePath)}catch(e){console.warn('forward queue',e)}}}};
 
   // Account buttons.
   $('#piLoginBtn').onclick=()=>isCloudReady()?toast(`@${cloud.user.username}`):loginPi();
