@@ -5,6 +5,7 @@ const SUPABASE_SERVER_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPAB
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || '';
 const PI_API_BASE = (process.env.PI_API_BASE || 'https://api.minepi.com').replace(/\/$/, '');
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 
 function assertEnv() {
   const missing = [];
@@ -139,7 +140,7 @@ async function storageDelete(path) {
 
 function publicConfig() {
   assertEnv();
-  return { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_PUBLISHABLE_KEY };
+  return { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_PUBLISHABLE_KEY, googleClientId: GOOGLE_CLIENT_ID };
 }
 
 function uuidList(ids) { return ids.filter(Boolean).join(','); }

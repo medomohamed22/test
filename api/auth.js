@@ -1,7 +1,8 @@
 const { send, allowMethods, body, signJwt, verifyPiAccessToken, sb, publicConfig } = require('./_lib');
 
 module.exports = async function handler(req, res) {
-  if (!allowMethods(req, res, ['POST'])) return;
+  if (!allowMethods(req, res, ['GET','POST'])) return;
+  if (req.method === 'GET') return send(res, 200, { ok: true, ...publicConfig() });
   try {
     const { accessToken } = body(req);
     const me = await verifyPiAccessToken(accessToken);
