@@ -366,7 +366,7 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
         </div>
 
         <div class="setting-actions">
-          <button class="big-btn secondary" id="connectGoogleDrive" data-i18n="connectGoogle">ربط حساب Google</button>
+          <button type="button" class="big-btn secondary" id="connectGoogleDrive" data-google-action="connect" data-i18n="connectGoogle">ربط حساب Google</button>
           <button class="big-btn secondary" id="backupToGoogleDrive" data-i18n="backupNow">نسخ احتياطي الآن</button>
           <button class="big-btn secondary" id="restoreFromGoogleDrive" data-i18n="restoreLatest">استعادة آخر نسخة</button>
           <button class="big-btn danger" id="disconnectGoogleDrive" style="display:none" data-i18n="disconnectGoogle">فصل حساب Google</button>
@@ -1138,11 +1138,19 @@ function setDriveBusy(on,label=''){
 async function googleApi(pathOptions={}){
   if(!isCloudReady())throw new Error('pi_login_required');
   const {method='POST',body=null}=pathOptions;
-  const headers={Authorization:`Bearer ${cloud.token}`};
+  const headers={Authorization:`Bearer ${cloud.token}`,'Accept':'application/json'};
   if(body!==null)headers['Content-Type']='application/json';
-  const r=await fetch('/api/google',{method,headers,body:body===null?undefined:JSON.stringify(body)});
-  const txt=await r.text();let d={};try{d=txt?JSON.parse(txt):{}}catch{}
-  if(!r.ok){const e=new Error(d.error||'google_api_failed');e.status=r.status;e.detail=d;throw e}
+  let r;
+  try{
+    r=await fetch('/api/google',{method,headers,body:body===null?undefined:JSON.stringify(body),cache:'no-store'});
+  }catch(netErr){
+    const e=new Error('google_api_network_error');e.cause=netErr;throw e;
+  }
+  const txt=await r.text();let d={};try{d=txt?JSON.parse(txt):{}}catch{d={raw:txt}}
+  if(!r.ok){
+    const e=new Error(d.error||('google_api_http_'+r.status));
+    e.status=r.status;e.detail=d;throw e;
+  }
   return d;
 }
 async function updateGoogleDriveUI(message=''){
@@ -1174,26 +1182,78 @@ async function makeBackup(){
     localSettings:{theme:localStorage.getItem('violet-theme')||'light',callLog:localStorage.getItem('chatwayCallLogV1')||'[]'}
   };
 }
+
+async function openGoogleAuthUrl(url){
+  if(!url)throw new Error('missing_google_auth_url');
+
+  // Preferred inside Pi Browser.
+  if(window.Pi?.openUrlInSystemBrowser){
+    try{
+      const result=Pi.openUrlInSystemBrowser(url);
+      if(result&&typeof result.then==='function')await result;
+      return true;
+    }catch(e){
+      console.warn('Pi.openUrlInSystemBrowser failed',e);
+    }
+  }
+
+  // Fallback for normal browsers / Pi versions where SDK external open fails.
+  try{
+    const w=window.open(url,'_blank','noopener,noreferrer');
+    if(w)return true;
+  }catch(e){
+    console.warn('window.open failed',e);
+  }
+
+  // Last resort: same tab redirect.
+  location.assign(url);
+  return true;
+}
+
 async function connectGoogleDrive(){
   if(driveBusy)return;
-  if(!isCloudReady())return toast('سجّل الدخول بحساب Pi أولًا');
-  setDriveBusy(true,currentLanguage==='en'?'Opening Google in your browser...':'جاري فتح Google في المتصفح...');
+  if(!isCloudReady()){
+    toast(currentLanguage==='en'?'Sign in with Pi first':'سجّل الدخول بحساب Pi أولًا');
+    return;
+  }
+
+  setDriveBusy(true,currentLanguage==='en'?'Preparing Google sign-in...':'جاري تجهيز تسجيل الدخول إلى Google...');
   try{
     const d=await googleApi({body:{action:'auth_url'}});
-    if(!d.url)throw new Error('no_auth_url');
-    try{
-      if(window.Pi?.openUrlInSystemBrowser){
-        await Pi.openUrlInSystemBrowser(d.url);
-      }else{
-        location.href=d.url;
-      }
-    }catch{
-      location.href=d.url;
-    }
+    if(!d?.url)throw new Error('no_auth_url');
+
+    // Save marker so the app knows the user initiated the OAuth flow.
+    sessionStorage.setItem('chatway-google-oauth-started',String(Date.now()));
+    await openGoogleAuthUrl(d.url);
+
+    $('#googleDriveStatus').textContent=currentLanguage==='en'
+      ?'Google sign-in opened in browser'
+      :'تم فتح تسجيل Google في المتصفح';
   }catch(e){
-    console.error('Google connect',e);
-    toast(currentLanguage==='en'?'Could not open Google sign-in':'تعذر فتح تسجيل الدخول إلى Google');
-  }finally{setDriveBusy(false)}
+    console.error('Google connect error',e);
+    let msg=currentLanguage==='en'?'Could not start Google sign-in':'تعذر بدء تسجيل الدخول إلى Google';
+
+    if(e.message==='pi_login_required'){
+      msg=currentLanguage==='en'?'Sign in with Pi first':'سجّل الدخول بحساب Pi أولًا';
+    }else if(e.message==='google_oauth_not_configured'){
+      msg=currentLanguage==='en'
+        ?'Google OAuth is not configured on Vercel'
+        :'إعدادات Google OAuth غير مكتملة على Vercel';
+    }else if(e.status===401){
+      msg=currentLanguage==='en'
+        ?'Pi session expired. Sign in again.'
+        :'انتهت جلسة Pi. سجل الدخول مرة أخرى.';
+    }else if(e.message==='google_api_network_error'){
+      msg=currentLanguage==='en'
+        ?'Could not reach the Google connection API'
+        :'تعذر الاتصال بخدمة ربط Google';
+    }
+
+    $('#googleDriveStatus').textContent=msg;
+    toast(msg);
+  }finally{
+    setDriveBusy(false);
+  }
 }
 async function backupGoogleDrive(){
   if(driveBusy)return;
@@ -1249,7 +1309,17 @@ async function disconnectGoogleDrive(){
   }catch(e){toast(currentLanguage==='en'?'Could not disconnect Google Drive':'تعذر فصل Google Drive')}
 }
 
-$('#connectGoogleDrive').onclick=connectGoogleDrive;
+const _googleConnectBtn=$('#connectGoogleDrive');
+if(_googleConnectBtn){
+  _googleConnectBtn.onclick=null;
+  _googleConnectBtn.addEventListener('click',e=>{
+    e.preventDefault();
+    e.stopPropagation();
+    const status=$('#googleDriveStatus');
+    if(status)status.textContent=currentLanguage==='en'?'Starting Google sign-in...':'جاري بدء تسجيل Google...';
+    connectGoogleDrive();
+  });
+}
 $('#backupToGoogleDrive').onclick=backupGoogleDrive;
 $('#restoreFromGoogleDrive').onclick=restoreGoogleDrive;
 $('#disconnectGoogleDrive').onclick=disconnectGoogleDrive;
