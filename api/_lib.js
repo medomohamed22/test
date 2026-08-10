@@ -5,9 +5,6 @@ const SUPABASE_SERVER_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPAB
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET || '';
 const PI_API_BASE = (process.env.PI_API_BASE || 'https://api.minepi.com').replace(/\/$/, '');
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@example.com';
 
 function assertEnv() {
   const missing = [];
@@ -142,48 +139,14 @@ async function storageDelete(path) {
 
 function publicConfig() {
   assertEnv();
-  return { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_PUBLISHABLE_KEY, vapidPublicKey: VAPID_PUBLIC_KEY };
+  return { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_PUBLISHABLE_KEY };
 }
 
 function uuidList(ids) { return ids.filter(Boolean).join(','); }
 
-let _webPush = null;
-function webPush(){
-  if(_webPush) return _webPush;
-  if(!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return null;
-  try{
-    _webPush = require('web-push');
-    _webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-    return _webPush;
-  }catch(e){
-    console.warn('web-push unavailable', e.message);
-    return null;
-  }
-}
-async function sendPushToUsers(userIds, payload){
-  const wp = webPush();
-  const ids = [...new Set((userIds||[]).filter(Boolean))];
-  if(!wp || !ids.length) return {sent:0};
-  const rows = await sb(`push_subscriptions?user_id=in.(${ids.join(',')})&select=id,user_id,endpoint,p256dh,auth_key`);
-  let sent=0;
-  for(const row of rows||[]){
-    try{
-      await wp.sendNotification({
-        endpoint:row.endpoint,
-        keys:{p256dh:row.p256dh,auth:row.auth_key}
-      }, JSON.stringify(payload||{}), {TTL:60, urgency:'high'});
-      sent++;
-    }catch(e){
-      if(e.statusCode===404 || e.statusCode===410){
-        await sb(`push_subscriptions?id=eq.${encodeURIComponent(row.id)}`,{method:'DELETE'}).catch(()=>{});
-      }else console.warn('push send failed', e.statusCode||'', e.message);
-    }
-  }
-  return {sent};
-}
 
 
 module.exports = {
   send, allowMethods, body, signJwt, verifyJwt, requireUser,
-  verifyPiAccessToken, sb, publicConfig, uuidList, realtimeBroadcast, storageDelete, sendPushToUsers,
+  verifyPiAccessToken, sb, publicConfig, uuidList, realtimeBroadcast, storageDelete,
 };

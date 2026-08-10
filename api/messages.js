@@ -1,4 +1,4 @@
-const { send, allowMethods, body, requireUser, sb, realtimeBroadcast, storageDelete, sendPushToUsers } = require('./_lib');
+const { send, allowMethods, body, requireUser, sb, realtimeBroadcast, storageDelete } = require('./_lib');
 
 async function assertRoomMember(userId, roomId) {
   const rows = await sb(`room_members?room_id=eq.${encodeURIComponent(roomId)}&user_id=eq.${encodeURIComponent(userId)}&select=room_id&limit=1`);
@@ -37,16 +37,6 @@ async function enqueue(me, b) {
   });
 
   await Promise.allSettled(recipients.map(uid => realtimeBroadcast(`user:${uid}`, 'delivery_available', { roomId, clientId })));
-  const preview = payload.type==='text' && payload.text ? String(payload.text).slice(0,90) :
-    payload.type==='image'?'📷 صورة':payload.type==='video'?'🎥 فيديو':payload.type==='audio'?'🎙️ رسالة صوتية':
-    payload.type==='location'?'📍 موقع':payload.kind==='control'?'تحديث في المحادثة':'رسالة جديدة';
-  sendPushToUsers(recipients,{
-    title:`@${me.username||'ChatWay'}`,
-    body:preview,
-    roomId,
-    tag:`chatway:${roomId}`,
-    url:`/?room=${encodeURIComponent(roomId)}`
-  }).catch(e=>console.warn('push notify',e));
   return { queued: recipients.length };
 }
 
