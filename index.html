@@ -224,10 +224,39 @@ radial-gradient(circle at 18px 18px, color-mix(in srgb,var(--purple) 5%,transpar
 .edit-info{font-size:9px;opacity:.7;margin-top:3px}
 .cleanup-chip{border:1px solid var(--line);background:var(--surface2);color:var(--text);padding:7px 9px;border-radius:999px;font-size:10px}
 
+
+/* ===== ChatWay v8 Calls ===== */
+.call-overlay{position:fixed;inset:0;z-index:180;background:linear-gradient(160deg,#2b1555,#6f3cff 58%,#1f133d);color:#fff;display:none;flex-direction:column}
+.call-overlay.active{display:flex}
+.call-top{display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top)) 14px 10px}
+.call-mini{width:40px;height:40px;border:0;border-radius:13px;background:#ffffff18;color:#fff;font-size:20px}
+.call-title-wrap{flex:1;display:flex;flex-direction:column;gap:2px}.call-title-wrap b{font-size:15px}.call-title-wrap span{font-size:10px;opacity:.75}
+.call-duration{font-size:12px;font-weight:900;direction:ltr}
+.call-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:0;padding:14px;overflow:auto}
+.call-avatar-big{width:108px;height:108px;border-radius:50%;background:#ffffff1c;border:2px solid #ffffff35;display:grid;place-items:center;font-size:34px;font-weight:900;box-shadow:0 20px 60px #0004}
+.call-peer-name{font-size:22px;font-weight:900;margin-top:15px}
+.call-participants{font-size:11px;opacity:.8;margin-top:7px;text-align:center}
+.call-videos{width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;margin-top:15px}
+.call-video-tile{position:relative;border-radius:18px;overflow:hidden;background:#130d22;aspect-ratio:3/4;min-height:170px}
+.call-video-tile video{width:100%;height:100%;object-fit:cover}.call-video-label{position:absolute;bottom:7px;left:7px;right:7px;background:#0008;border-radius:9px;padding:5px 7px;font-size:9px}
+.call-controls{display:flex;justify-content:center;gap:13px;padding:12px 12px calc(18px + env(safe-area-inset-bottom))}
+.call-control{width:62px;height:62px;border:0;border-radius:50%;background:#ffffff1d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.call-control span{font-size:21px}.call-control small{font-size:8px}.call-control.off{background:#fff;color:#2c1558}.call-control.danger{background:#ef334d}
+.incoming-call{position:fixed;inset:0;z-index:190;background:#190d2deb;backdrop-filter:blur(14px);display:none;align-items:center;justify-content:center;padding:20px}.incoming-call.active{display:flex}
+.incoming-card{width:min(92vw,360px);text-align:center;background:linear-gradient(160deg,#6f3cff,#3c1d73);color:#fff;border-radius:28px;padding:28px 20px;box-shadow:0 24px 80px #0008}
+.incoming-icon{width:88px;height:88px;border-radius:50%;background:#ffffff1c;margin:auto;display:grid;place-items:center;font-size:36px;animation:ringPulse 1.2s infinite}
+@keyframes ringPulse{50%{transform:scale(1.07);box-shadow:0 0 0 12px #ffffff0d}}
+.incoming-card h2{margin:17px 0 4px}.incoming-card p{margin:0;opacity:.8;font-size:12px}
+.incoming-actions{display:flex;justify-content:space-around;margin-top:28px}.incoming-actions button{width:72px;height:72px;border-radius:50%;border:0;color:#fff;font-size:23px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}.incoming-actions button span{font-size:9px}
+.reject-call{background:#ef334d}.accept-call{background:#20b86a}
+.call-log-item{display:flex;align-items:center;gap:10px;padding:12px;border-bottom:1px solid var(--line)}.call-log-item:last-child{border:0}.call-log-item .meta{flex:1}.call-log-item .meta b{display:block}.call-log-item .meta small{color:var(--muted)}.call-kind{width:38px;height:38px;border-radius:12px;background:var(--purpleSoft);display:grid;place-items:center}
+.readonly-toast-action{font-weight:900;text-decoration:underline}
+
 </style>
 
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script crossorigin src="https://unpkg.com/@daily-co/daily-js"></script>
 <script>
 try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(location.search).get("sandbox") === "1" }); } catch(e) { console.warn("Pi init", e); }
 </script>
@@ -261,7 +290,7 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
 
   <section class="screen" id="callsScreen">
     <div class="topbar"><div class="brand">المكالمات</div></div>
-    <div class="empty"><b>المكالمات</b>لا توجد مكالمات بعد.</div>
+    <div class="cards" id="callLogCards"></div>
   </section>
 
   <section class="screen" id="settingsScreen">
@@ -299,7 +328,8 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
     <div class="avatar" id="chatAvatar">A</div>
     <div class="head-info" id="openInfo"><div class="head-name" id="chatTitle">محادثة</div><div class="status" id="chatStatus">متصل الآن</div></div>
     <button class="round-btn" id="searchChatBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
-    <button class="round-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3"/></svg></button>
+    <button class="round-btn" id="audioCallBtn" title="مكالمة صوتية">📞</button>
+    <button class="round-btn" id="videoCallBtn" title="مكالمة فيديو">🎥</button>
   </div>
   <div class="pinned-bar" id="pinnedBar"><span>📌</span><b id="pinnedLabel">الرسائل المثبتة</b><span class="pintext" id="pinnedText"></span><span class="pin-dots" id="pinDots"></span><span>⌄</span></div>
   <div class="search-in-chat" id="searchInChat" style="flex-wrap:wrap">
@@ -400,6 +430,39 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
 
 <div class="modal" id="filePreviewModal"><div class="modal-card"><h3>إرسال ملف</h3><div class="file-preview"><div class="ficon" id="previewIcon">📄</div><div class="fmeta"><b id="previewName"></b><span id="previewSize"></span></div></div>
 <div class="modal-actions"><button class="cancel" id="cancelFile">إلغاء</button><button class="ok" id="confirmFile">إرسال</button></div></div></div>
+
+
+<div class="call-overlay" id="callOverlay">
+  <div class="call-top">
+    <button class="call-mini" id="minimizeCall">⌄</button>
+    <div class="call-title-wrap"><b id="callTitle">مكالمة ChatWay</b><span id="callState">جارٍ الاتصال...</span></div>
+    <div class="call-duration" id="callDuration">00:00</div>
+  </div>
+  <div class="call-stage" id="callStage">
+    <div class="call-avatar-big" id="callAvatarBig">CW</div>
+    <div class="call-peer-name" id="callPeerName">ChatWay</div>
+    <div class="call-participants" id="callParticipants"></div>
+    <div class="call-videos" id="callVideos"></div>
+  </div>
+  <div class="call-controls">
+    <button class="call-control" id="toggleMic"><span>🎙️</span><small>كتم</small></button>
+    <button class="call-control" id="toggleCamera"><span>📷</span><small>الكاميرا</small></button>
+    <button class="call-control" id="switchCamera"><span>🔄</span><small>تبديل</small></button>
+    <button class="call-control danger" id="endCall"><span>☎</span><small>إنهاء</small></button>
+  </div>
+</div>
+
+<div class="incoming-call" id="incomingCall">
+  <div class="incoming-card">
+    <div class="incoming-icon" id="incomingIcon">📞</div>
+    <h2 id="incomingName">مكالمة واردة</h2>
+    <p id="incomingType">مكالمة صوتية</p>
+    <div class="incoming-actions">
+      <button class="reject-call" id="rejectCall">✕<span>رفض</span></button>
+      <button class="accept-call" id="acceptCall">✓<span>قبول</span></button>
+    </div>
+  </div>
+</div>
 
 <div class="context chat-context" id="chatContextMenu">
   <div class="chat-context-title" id="chatContextTitle">محادثة</div>
@@ -1314,6 +1377,193 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     await syncCloudRooms();const c=await localChatByRoom(roomId);if(c)await openChat(c.id);
     history.replaceState({},'',location.pathname);
   }
+
+
+  // ===== Daily audio/video calls =====
+  const CALL_LOG_KEY='chatwayCallLogV1';
+  let activeCall=null,incomingInvite=null,callTimer=null,callStartedAt=0;
+  function needPiLogin(){
+    if(isCloudReady())return true;
+    toast('سجّل الدخول بحساب Pi أولًا');
+    return false;
+  }
+  function callLogs(){try{return JSON.parse(localStorage.getItem(CALL_LOG_KEY)||'[]')}catch{return []}}
+  function saveCallLog(entry){
+    const arr=callLogs();arr.unshift({...entry,id:Date.now()+Math.random()});
+    localStorage.setItem(CALL_LOG_KEY,JSON.stringify(arr.slice(0,100)));renderCallLog();
+  }
+  function renderCallLog(){
+    const root=$('#callLogCards');if(!root)return;
+    const arr=callLogs();
+    root.innerHTML=arr.length?`<div class="card">${arr.map(x=>`<div class="call-log-item"><div class="call-kind">${x.type==='video'?'🎥':'📞'}</div><div class="meta"><b>${esc(x.name||'مكالمة')}</b><small>${x.direction==='incoming'?'واردة':x.direction==='missed'?'فائتة':'صادرة'} • ${new Date(x.at).toLocaleString('ar-EG')}</small></div><span>${x.duration?formatDuration(x.duration):''}</span></div>`).join('')}</div>`:'<div class="empty"><b>المكالمات</b>لا توجد مكالمات بعد.</div>';
+  }
+  renderCallLog();
+
+  function callApi(payload){return api('/api/calls',{method:'POST',body:JSON.stringify(payload)})}
+  async function startCall(type){
+    if(!needPiLogin())return;
+    if(activeCall||incomingInvite)return toast('هناك مكالمة جارية بالفعل');
+    const chat=await get('chats',activeChatId);
+    if(!chat?.cloudRoomId)return toast('المكالمة متاحة للمحادثات المتصلة بحساب Pi فقط');
+    try{
+      $('#callTitle').textContent=type==='video'?'مكالمة فيديو':'مكالمة صوتية';
+      $('#callPeerName').textContent=chat.name;
+      $('#callAvatarBig').textContent=initials(chat.name);
+      $('#callState').textContent='جارٍ الاتصال...';
+      $('#callOverlay').classList.add('active');
+      const d=await callApi({action:'start',roomId:chat.cloudRoomId,type});
+      activeCall={...d,appChatId:chat.id,name:chat.name,direction:'outgoing',callObject:null};
+      setupDailyCall(activeCall);
+      await joinDaily(activeCall);
+      sendCallEvent('ringing').catch(()=>{});
+      saveCallLog({type,name:chat.name,direction:'outgoing',at:Date.now(),duration:0});
+    }catch(e){
+      console.error('start call',e);$('#callOverlay').classList.remove('active');activeCall=null;
+      toast(e.message==='missing_DAILY_API_KEY'?'إعداد Daily غير مكتمل':'تعذر بدء المكالمة');
+    }
+  }
+  $('#audioCallBtn').onclick=()=>startCall('audio');
+  $('#videoCallBtn').onclick=()=>startCall('video');
+
+  async function setupDailyCall(info){
+    if(!window.Daily)throw new Error('Daily SDK unavailable');
+    const audioOnly=info.type==='audio';
+    const call=window.Daily.createCallObject({audioSource:true,videoSource:audioOnly?false:true});
+    info.callObject=call;
+    call.on('joined-meeting',()=>{callStartedAt=Date.now();$('#callState').textContent='متصل';startCallTimer();renderDailyParticipants()});
+    call.on('participant-joined',renderDailyParticipants);
+    call.on('participant-updated',renderDailyParticipants);
+    call.on('participant-left',renderDailyParticipants);
+    call.on('active-speaker-change',renderDailyParticipants);
+    call.on('left-meeting',()=>{});
+    call.on('error',e=>{console.warn('Daily call error',e);$('#callState').textContent='مشكلة في الاتصال'});
+  }
+  async function joinDaily(info){
+    if(!info.callObject)await setupDailyCall(info);
+    await info.callObject.join({url:info.dailyUrl,token:info.token});
+    if(info.type==='audio')info.callObject.setLocalVideo(false);
+    $('#toggleCamera').style.display=info.type==='audio'?'none':'flex';
+    $('#switchCamera').style.display=info.type==='audio'?'none':'flex';
+  }
+  function startCallTimer(){
+    clearInterval(callTimer);
+    const update=()=>{$('#callDuration').textContent=formatDuration((Date.now()-callStartedAt)/1000)};
+    update();callTimer=setInterval(update,1000);
+  }
+  function participantTrack(p,kind){
+    const t=p?.tracks?.[kind];return t?.persistentTrack||t?.track||null;
+  }
+  function renderDailyParticipants(){
+    if(!activeCall?.callObject)return;
+    const ps=activeCall.callObject.participants()||{},list=Object.values(ps);
+    $('#callParticipants').textContent=list.length>1?`${list.length} مشاركين`:(activeCall.type==='audio'?'مكالمة صوتية':'مكالمة فيديو');
+    const root=$('#callVideos');
+    if(activeCall.type==='audio'){root.innerHTML='';return}
+    root.innerHTML='';
+    for(const p of list){
+      const track=participantTrack(p,'video');if(!track||track.readyState==='ended')continue;
+      const tile=document.createElement('div');tile.className='call-video-tile';
+      const video=document.createElement('video');video.autoplay=true;video.playsInline=true;video.muted=!!p.local;
+      video.srcObject=new MediaStream([track]);
+      const label=document.createElement('div');label.className='call-video-label';label.textContent=p.user_name||(p.local?'أنت':'مشارك');
+      tile.append(video,label);root.appendChild(tile);
+    }
+    // attach remote audio tracks separately
+    document.querySelectorAll('.daily-remote-audio').forEach(x=>x.remove());
+    for(const p of list){
+      if(p.local)continue;const at=participantTrack(p,'audio');if(!at)continue;
+      const a=document.createElement('audio');a.className='daily-remote-audio';a.autoplay=true;a.srcObject=new MediaStream([at]);a.style.display='none';document.body.appendChild(a);a.play().catch(()=>{});
+    }
+  }
+  $('#toggleMic').onclick=async()=>{
+    if(!activeCall?.callObject)return;
+    const on=activeCall.callObject.localAudio();activeCall.callObject.setLocalAudio(!on);
+    $('#toggleMic').classList.toggle('off',on);$('#toggleMic small').textContent=on?'تشغيل':'كتم';
+  };
+  $('#toggleCamera').onclick=async()=>{
+    if(!activeCall?.callObject||activeCall.type==='audio')return;
+    const on=activeCall.callObject.localVideo();activeCall.callObject.setLocalVideo(!on);
+    $('#toggleCamera').classList.toggle('off',on);$('#toggleCamera small').textContent=on?'تشغيل':'الكاميرا';
+  };
+  $('#switchCamera').onclick=async()=>{
+    if(!activeCall?.callObject||activeCall.type==='audio')return;
+    try{
+      const devices=await navigator.mediaDevices.enumerateDevices(),cams=devices.filter(d=>d.kind==='videoinput');
+      if(cams.length<2)return toast('لا توجد كاميرا أخرى');
+      const current=activeCall.callObject.getInputDevices?.()?.camera?.deviceId;
+      const next=cams.find(c=>c.deviceId!==current)||cams[0];
+      await activeCall.callObject.setInputDevicesAsync?.({videoDeviceId:next.deviceId});
+    }catch(e){toast('تعذر تبديل الكاميرا')}
+  };
+  $('#minimizeCall').onclick=()=>$('#callOverlay').classList.remove('active');
+
+  async function sendCallEvent(event,targetUserId){
+    if(!activeCall)return;
+    return callApi({action:'event',roomId:activeCall.roomId,type:activeCall.type,callId:activeCall.callId,dailyRoomName:activeCall.dailyRoomName,event,targetUserId});
+  }
+  async function endActiveCall(remoteEvent=false){
+    if(!activeCall)return;
+    const snapshot=activeCall,duration=callStartedAt?Math.floor((Date.now()-callStartedAt)/1000):0;
+    if(!remoteEvent)sendCallEvent('ended').catch(()=>{});
+    try{await snapshot.callObject?.leave()}catch{}
+    try{snapshot.callObject?.destroy()}catch{}
+    clearInterval(callTimer);callTimer=null;callStartedAt=0;
+    document.querySelectorAll('.daily-remote-audio').forEach(x=>x.remove());
+    $('#callOverlay').classList.remove('active');$('#callVideos').innerHTML='';$('#callDuration').textContent='00:00';
+    activeCall=null;
+    const logs=callLogs();if(logs.length&&snapshot.direction==='outgoing'&&duration){logs[0].duration=duration;localStorage.setItem(CALL_LOG_KEY,JSON.stringify(logs));renderCallLog()}
+  }
+  $('#endCall').onclick=()=>endActiveCall(false);
+
+  function showIncomingCall(invite){
+    if(activeCall||incomingInvite){
+      callApi({action:'event',roomId:invite.roomId,type:invite.type,callId:invite.callId,dailyRoomName:invite.dailyRoomName,event:'busy',targetUserId:invite.callerId}).catch(()=>{});
+      return;
+    }
+    incomingInvite=invite;
+    $('#incomingIcon').textContent=invite.type==='video'?'🎥':'📞';
+    $('#incomingName').textContent='@'+(invite.callerUsername||'Pi');
+    $('#incomingType').textContent=invite.type==='video'?'مكالمة فيديو واردة':'مكالمة صوتية واردة';
+    $('#incomingCall').classList.add('active');
+  }
+  $('#rejectCall').onclick=async()=>{
+    if(!incomingInvite)return;
+    const inv=incomingInvite;incomingInvite=null;$('#incomingCall').classList.remove('active');
+    saveCallLog({type:inv.type,name:'@'+inv.callerUsername,direction:'missed',at:Date.now(),duration:0});
+    callApi({action:'event',roomId:inv.roomId,type:inv.type,callId:inv.callId,dailyRoomName:inv.dailyRoomName,event:'rejected',targetUserId:inv.callerId}).catch(()=>{});
+  };
+  $('#acceptCall').onclick=async()=>{
+    if(!needPiLogin()||!incomingInvite)return;
+    const inv=incomingInvite;incomingInvite=null;$('#incomingCall').classList.remove('active');
+    try{
+      const d=await callApi({action:'join',roomId:inv.roomId,type:inv.type,dailyRoomName:inv.dailyRoomName,dailyUrl:inv.dailyUrl});
+      const chat=await localChatByRoom(inv.roomId);
+      activeCall={...inv,...d,appChatId:chat?.id,name:chat?.name||('@'+inv.callerUsername),direction:'incoming',callObject:null};
+      $('#callTitle').textContent=inv.type==='video'?'مكالمة فيديو':'مكالمة صوتية';$('#callPeerName').textContent=activeCall.name;$('#callAvatarBig').textContent=initials(activeCall.name);$('#callState').textContent='جارٍ الانضمام...';$('#callOverlay').classList.add('active');
+      await setupDailyCall(activeCall);await joinDaily(activeCall);
+      saveCallLog({type:inv.type,name:activeCall.name,direction:'incoming',at:Date.now(),duration:0});
+      callApi({action:'event',roomId:inv.roomId,type:inv.type,callId:inv.callId,dailyRoomName:inv.dailyRoomName,event:'accepted',targetUserId:inv.callerId}).catch(()=>{});
+    }catch(e){activeCall=null;$('#callOverlay').classList.remove('active');toast('تعذر الانضمام للمكالمة')}
+  };
+  function handleCallEvent(p){
+    if(!p||!activeCall||p.callId!==activeCall.callId)return;
+    if(p.event==='accepted')$('#callState').textContent=`@${p.byUsername||'Pi'} انضم`;
+    if(p.event==='rejected'){$('#callState').textContent='تم رفض المكالمة';setTimeout(()=>endActiveCall(true),900)}
+    if(p.event==='busy'){$('#callState').textContent='مشغول في مكالمة أخرى';setTimeout(()=>endActiveCall(true),1200)}
+    if(p.event==='ended')endActiveCall(true);
+  }
+
+  // Read-only mode after Pi logout. Chats remain visible, cloud actions require login.
+  const loginRequiredIds=new Set(['sendBtn','micBtn','attachBtn','locationBtn','audioCallBtn','videoCallBtn','createGroupBtn','createDirectBtn']);
+  document.addEventListener('click',e=>{
+    const el=e.target.closest('button,[data-action]');
+    if(!el||isCloudReady())return;
+    const action=el.dataset?.action||'';
+    const cloudMessageAction=['react','edit','deleteAll','pin'].includes(action);
+    if(loginRequiredIds.has(el.id)||cloudMessageAction){
+      e.preventDefault();e.stopImmediatePropagation();toast('سجّل الدخول بحساب Pi أولًا');
+    }
+  },true);
 
   // Account buttons.
   $('#piLoginBtn').onclick=()=>isCloudReady()?toast(`@${cloud.user.username}`):loginPi();
