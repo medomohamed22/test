@@ -177,6 +177,19 @@ radial-gradient(circle at 18px 18px, color-mix(in srgb,var(--purple) 5%,transpar
 .audio-wave{flex:1;display:flex;flex-direction:column;gap:5px}.audio-track{width:100%;accent-color:var(--yellow)}.audio-time{font-size:9px;opacity:.75;direction:ltr;text-align:left}
 .msg-row.has-media+.msg-row{margin-top:15px}.context button[data-action="pin"],.context button[data-action="star"]{font-weight:700}
 
+
+/* ===== ChatWay v4: account button + chat actions ===== */
+.pi-login{height:44px;min-width:132px;max-width:190px;padding:0 13px;border-radius:16px;justify-content:center;flex:0 1 190px}
+.pi-login .pi-label{display:block!important;max-width:154px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr;unicode-bidi:plaintext;font-size:12px;font-weight:900}
+.pi-login.logged .pi-label{font-size:12px}
+@media(max-width:430px){.pi-login{min-width:118px;max-width:158px;flex-basis:158px;padding:0 10px}.pi-login .pi-label{max-width:126px;font-size:11px}}
+@media(max-width:360px){.pi-login{min-width:105px;max-width:136px;flex-basis:136px}.pi-login .pi-label{max-width:108px;font-size:10px}.topbar .brand{font-size:17px}}
+.chat-item.blocked{opacity:.68}
+.block-badge{font-size:10px;color:var(--danger)}
+.chat-context-title{padding:9px 11px 7px;font-size:11px;color:var(--muted);font-weight:800;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-context .danger-action{color:var(--danger)}
+.chat-context button{display:flex;align-items:center;gap:9px}
+
 </style>
 
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
@@ -327,6 +340,14 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
 <div class="modal" id="filePreviewModal"><div class="modal-card"><h3>إرسال ملف</h3><div class="file-preview"><div class="ficon" id="previewIcon">📄</div><div class="fmeta"><b id="previewName"></b><span id="previewSize"></span></div></div>
 <div class="modal-actions"><button class="cancel" id="cancelFile">إلغاء</button><button class="ok" id="confirmFile">إرسال</button></div></div></div>
 
+<div class="context chat-context" id="chatContextMenu">
+  <div class="chat-context-title" id="chatContextTitle">محادثة</div>
+  <button data-chat-action="pin">📌 تثبيت</button>
+  <button data-chat-action="mute">🔕 كتم</button>
+  <button data-chat-action="block">🚫 حظر</button>
+  <button class="danger-action" data-chat-action="delete">🗑️ حذف المحادثة</button>
+</div>
+
 <div class="context" id="contextMenu">
   <button data-action="reply">↩️ رد</button><button data-action="react">😊 تفاعل</button><button data-action="pin">📌 تثبيت الرسالة</button><button data-action="forward">↪️ إعادة توجيه</button><button data-action="select">☑️ تحديد</button><button data-action="star">⭐ تمييز بنجمة</button><button data-action="copy">📋 نسخ</button><button data-action="edit">✏️ تعديل</button><button data-action="deleteMe">🗑️ حذف عندي</button><button data-action="deleteAll">🚫 حذف لدى الجميع</button>
 </div>
@@ -402,7 +423,7 @@ const del=async(n,id)=>{await ensureStorage();if(storageMode==='local'){lsWrite(
 const clearS=async n=>{await ensureStorage();if(storageMode==='local'){lsWrite(n,[]);return}return new Promise((res,rej)=>{const r=st(n,'readwrite').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})};
 
 function chatDefaults(c={}){
-  return {name:'محادثة',updatedAt:Date.now(),last:'',unread:0,pinned:false,muted:false,favorite:false,archived:false,lastSeen:Date.now(),draft:'',type:'direct',members:[],bubbleColor:'#6f3cff',wallpaper:'dots',disappearMs:0,locked:false,pin:'',...c,members:Array.isArray(c.members)?c.members:[]};
+  return {name:'محادثة',updatedAt:Date.now(),last:'',unread:0,pinned:false,muted:false,favorite:false,archived:false,lastSeen:Date.now(),draft:'',type:'direct',members:[],bubbleColor:'#6f3cff',wallpaper:'dots',disappearMs:0,locked:false,pin:'',blocked:false,deletedLocally:false,...c,members:Array.isArray(c.members)?c.members:[]};
 }
 async function readStoreFromDb(database,storeName){
   if(!database||!database.objectStoreNames.contains(storeName))return [];
@@ -461,7 +482,7 @@ async function seed(){
   for(const c of (await all('chats'))){const normalized=chatDefaults(c);normalized.id=c.id;await put('chats',normalized)}
 }
 async function renderChats(q=''){
-  let chats=(await all('chats')).map(chatDefaults);
+  let chats=(await all('chats')).map(chatDefaults).filter(c=>!c.deletedLocally);
   const archivedCount=chats.filter(c=>c.archived).length;
   $('#archivedCount').textContent=archivedCount;
   $('#archivedBanner').classList.toggle('show',archivedCount>0&&currentFilter!=='archived');
@@ -471,16 +492,68 @@ async function renderChats(q=''){
   chats.sort((a,b)=>(Number(b.pinned)-Number(a.pinned))||((b.updatedAt||0)-(a.updatedAt||0)));
   const root=$('#chatList');
   if(!chats.length){root.innerHTML='<div class="empty"><b>لا توجد محادثات هنا</b>'+(archivedCount&&currentFilter==='all'?'لديك محادثات في قسم المؤرشفة.':'ابدأ محادثة جديدة من الزر الأصفر.')+'</div>';return}
-  root.innerHTML=chats.map(c=>`<div class="chat-item" data-id="${c.id}">
+  root.innerHTML=chats.map(c=>`<div class="chat-item ${c.blocked?'blocked':''}" data-id="${c.id}">
     <div class="avatar">${esc(initials(c.name))}</div>
     <div class="chat-main"><div class="line"><div class="name">${esc(c.name)}</div>
-      <div class="badges">${c.type==='group'?'<span class="group-tag">مجموعة</span>':''}${c.locked?'<span class="locked-mark">🔐</span>':''}${c.pinned?'<span class="pin">📌</span>':''}${c.muted?'<span class="mutedIcon">🔕</span>':''}${c.unread?`<span class="badge">${c.unread}</span>`:''}</div>
+      <div class="badges">${c.type==='group'?'<span class="group-tag">مجموعة</span>':''}${c.blocked?'<span class="block-badge">🚫</span>':''}${c.locked?'<span class="locked-mark">🔐</span>':''}${c.pinned?'<span class="pin">📌</span>':''}${c.muted?'<span class="mutedIcon">🔕</span>':''}${c.unread?`<span class="badge">${c.unread}</span>`:''}</div>
       <div class="time">${fmtTime(c.updatedAt)}</div></div>
       <div class="preview">${c.draft?'<b style="color:var(--danger)">مسودة: </b>'+esc(c.draft):esc(c.last||'ابدأ المحادثة')}</div>
     </div></div>`).join('');
-  $$('.chat-item').forEach(x=>x.onclick=()=>openChat(Number(x.dataset.id)));
+  $$('.chat-item').forEach(x=>{
+    let pressTimer=null,sx=0,sy=0,longPressed=false;
+    const id=Number(x.dataset.id);
+    x.onclick=e=>{if(longPressed){longPressed=false;e.preventDefault();return}openChat(id)};
+    x.oncontextmenu=e=>{e.preventDefault();openChatContext(id,e.clientX,e.clientY)};
+    x.addEventListener('touchstart',e=>{
+      sx=e.touches[0].clientX;sy=e.touches[0].clientY;longPressed=false;
+      pressTimer=setTimeout(()=>{longPressed=true;openChatContext(id,sx,sy)},520);
+    },{passive:true});
+    x.addEventListener('touchmove',e=>{
+      if(Math.abs(e.touches[0].clientX-sx)>10||Math.abs(e.touches[0].clientY-sy)>10)clearTimeout(pressTimer);
+    },{passive:true});
+    x.addEventListener('touchend',()=>clearTimeout(pressTimer),{passive:true});
+    x.addEventListener('touchcancel',()=>clearTimeout(pressTimer),{passive:true});
+  });
 }
-async function openChat(id,bypass=false){let c=await get('chats',id);if(!c)return;if(c.locked&&!bypass){pendingOpenChatId=id;pinMode='unlock';$('#pinTitle').textContent='أدخل PIN لفتح '+c.name;$('#pinInput').value='';$('#pinModal').classList.add('active');return}activeChatId=id;activeChatType=c.type||'direct';c.unread=0;await put('chats',c);$('#chatTitle').textContent=c.name;$('#chatAvatar').textContent=initials(c.name);$('#chatStatus').textContent=c.type==='group'?`${(c.members||[]).length} أعضاء`:'آخر ظهور '+relativeSeen(c.lastSeen);$('#messageInput').value=c.draft||'';$('#messages').className='messages wallpaper-'+(c.wallpaper||'dots');document.documentElement.style.setProperty('--bubbleMe',c.bubbleColor||'#6f3cff');$('#chatView').classList.add('active');await purgeExpired();await renderMessages();await renderPinned();await renderChats($('#searchChats').value.trim())}
+
+let selectedChatContextId=null;
+async function openChatContext(id,x,y){
+  const c=await get('chats',id);if(!c)return;
+  selectedChatContextId=id;
+  const menu=$('#chatContextMenu');
+  $('#chatContextTitle').textContent=c.name||'محادثة';
+  menu.querySelector('[data-chat-action="pin"]').textContent=c.pinned?'📌 إلغاء التثبيت':'📌 تثبيت';
+  menu.querySelector('[data-chat-action="mute"]').textContent=c.muted?'🔔 إلغاء الكتم':'🔕 كتم';
+  menu.querySelector('[data-chat-action="block"]').textContent=c.blocked?'✅ إلغاء الحظر':'🚫 حظر';
+  menu.style.left=Math.max(8,Math.min(x,innerWidth-205))+'px';
+  menu.style.top=Math.max(75,Math.min(y,innerHeight-260))+'px';
+  menu.classList.add('active');
+}
+async function deleteLocalChat(c){
+  if(!confirm(`حذف محادثة "${c.name}" من هذا الجهاز؟`))return;
+  for(const m of (await all('messages')).filter(m=>Number(m.chatId)===Number(c.id)))await del('messages',m.id);
+  c.last='';c.unread=0;c.draft='';c.deletedLocally=true;
+  await put('chats',c);
+  if(activeChatId===c.id){$('#chatView').classList.remove('active');activeChatId=null}
+  await renderChats($('#searchChats').value.trim());
+  toast('تم حذف المحادثة');
+}
+$$('#chatContextMenu button[data-chat-action]').forEach(btn=>btn.onclick=async()=>{
+  const id=selectedChatContextId,action=btn.dataset.chatAction;
+  $('#chatContextMenu').classList.remove('active');
+  const c=await get('chats',id);if(!c)return;
+  if(action==='pin'){c.pinned=!c.pinned;await put('chats',c);toast(c.pinned?'تم تثبيت المحادثة':'تم إلغاء التثبيت')}
+  if(action==='mute'){c.muted=!c.muted;await put('chats',c);toast(c.muted?'تم كتم المحادثة':'تم إلغاء الكتم')}
+  if(action==='block'){
+    c.blocked=!c.blocked;c.unread=0;await put('chats',c);
+    toast(c.blocked?'تم حظر المحادثة':'تم إلغاء الحظر');
+    if(activeChatId===c.id)$('#chatStatus').textContent=c.blocked?'محظور':(c.type==='group'?`${(c.members||[]).length} أعضاء`:'متصل الآن');
+  }
+  if(action==='delete')return deleteLocalChat(c);
+  await renderChats($('#searchChats').value.trim());
+});
+
+async function openChat(id,bypass=false){let c=await get('chats',id);if(!c)return;if(c.locked&&!bypass){pendingOpenChatId=id;pinMode='unlock';$('#pinTitle').textContent='أدخل PIN لفتح '+c.name;$('#pinInput').value='';$('#pinModal').classList.add('active');return}activeChatId=id;activeChatType=c.type||'direct';c.unread=0;await put('chats',c);$('#chatTitle').textContent=c.name;$('#chatAvatar').textContent=initials(c.name);$('#chatStatus').textContent=c.blocked?'محظور':(c.type==='group'?`${(c.members||[]).length} أعضاء`:'آخر ظهور '+relativeSeen(c.lastSeen));$('#messageInput').value=c.draft||'';$('#messages').className='messages wallpaper-'+(c.wallpaper||'dots');document.documentElement.style.setProperty('--bubbleMe',c.bubbleColor||'#6f3cff');$('#chatView').classList.add('active');await purgeExpired();await renderMessages();await renderPinned();await renderChats($('#searchChats').value.trim())}
 function relativeSeen(t){if(!t)return 'غير معروف';const d=Date.now()-t;if(d<60000)return 'الآن';if(d<3600000)return `منذ ${Math.floor(d/60000)} د`;return new Date(t).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}
 async function purgeExpired(){const now=Date.now();for(const m of await all('messages'))if(m.expiresAt&&m.expiresAt<=now)await del('messages',m.id)}
 function extractUrl(text=''){const m=text.match(/https?:\/\/[^\s<]+/i);return m?m[0]:''}
@@ -512,7 +585,7 @@ function bindMessageGestures(){let timer,startX=0,startY=0;$$('.msg-row').forEac
 async function openContext(el,x,y){selectedMessageId=+el.dataset.id;const msg=await get('messages',selectedMessageId),menu=$('#contextMenu'),pinBtn=menu.querySelector('[data-action="pin"]'),starBtn=menu.querySelector('[data-action="star"]');if(pinBtn)pinBtn.textContent=msg?.pinned?'📌 إزالة تثبيت الرسالة':'📌 تثبيت الرسالة';if(starBtn)starBtn.textContent=msg?.starred?'☆ إزالة النجمة':'⭐ تمييز بنجمة';menu.style.left=Math.min(x,innerWidth-190)+'px';menu.style.top=Math.min(y,innerHeight-300)+'px';menu.classList.add('active')}
 document.addEventListener('click',e=>{if(!e.target.closest('#contextMenu')&&!e.target.closest('.msg-row'))$('#contextMenu').classList.remove('active');if(!e.target.closest('#reactBar'))$('#reactBar').classList.remove('active')})
 
-document.addEventListener('pointerdown',e=>{const context=$('#contextMenu'),react=$('#reactBar');if(context?.classList.contains('active')&&!e.target.closest('#contextMenu'))context.classList.remove('active');if(react?.classList.contains('active')&&!e.target.closest('#reactBar'))react.classList.remove('active')},{capture:true});
+document.addEventListener('pointerdown',e=>{const context=$('#contextMenu'),react=$('#reactBar'),chatContext=$('#chatContextMenu');if(context?.classList.contains('active')&&!e.target.closest('#contextMenu'))context.classList.remove('active');if(react?.classList.contains('active')&&!e.target.closest('#reactBar'))react.classList.remove('active');if(chatContext?.classList.contains('active')&&!e.target.closest('#chatContextMenu'))chatContext.classList.remove('active')},{capture:true});
 
 async function setReply(id){const m=await get('messages',id);replyTo={id:m.id,text:replySnippet(m),sender:m.sender};$('#replyWho').textContent=m.sender==='me'?'الرد على نفسك':'الرد على الطرف الآخر';$('#replyText').textContent=replyTo.text;$('#replyPreview').classList.add('active');$('#messageInput').focus()}
 $('#cancelReply').onclick=()=>{replyTo=null;$('#replyPreview').classList.remove('active')}
@@ -706,7 +779,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     const logged=!!cloud.user;
     const btn=$('#piLoginBtn');
     btn.classList.toggle('logged',logged);
-    btn.querySelector('.pi-label').textContent=logged?`@${cloud.user.username}`:'دخول Pi';
+    btn.querySelector('.pi-label').textContent=logged?`@${cloud.user.username}`:'دخول Pi';btn.title=logged?`@${cloud.user.username}`:'تسجيل الدخول بـ Pi';
     $('#cloudDot').classList.toggle('online',logged);
     $('#cloudAccountText').textContent=logged?`@${cloud.user.username}`:'غير مسجل الدخول';
     $('#syncPill').classList.toggle('show',logged);
@@ -902,7 +975,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   }
   async function saveIncoming(roomId,wire,data){
     if(!wire||wire.fromUserId===cloud.user?.id)return;
-    const chat=await localChatByRoom(roomId);if(!chat)return;
+    const chat=await localChatByRoom(roomId);if(!chat)return;if(chat.blocked)return;if(chat.deletedLocally){chat.deletedLocally=false;await put('chats',chat)}
     const existing=(await all('messages')).find(m=>m.chatId===chat.id&&m.clientId===wire.clientId);if(existing)return;
     const msg={chatId:chat.id,clientId:wire.clientId,type:wire.type||'text',text:wire.text||'',name:wire.name||'',mime:wire.mime||'',size:wire.size||0,data:data||wire.data||'',lat:wire.lat,lng:wire.lng,accuracy:wire.accuracy,sender:'other',senderName:wire.senderName||wire.fromUsername||'Pi',createdAt:wire.createdAt||Date.now(),status:'read',replyTo:wire.replyTo||null,forwarded:!!wire.forwarded};
     await add('messages',msg);chat.updatedAt=msg.createdAt;chat.last=replySnippet(msg);chat.lastSeen=Date.now();
