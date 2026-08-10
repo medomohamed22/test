@@ -1183,77 +1183,26 @@ async function makeBackup(){
   };
 }
 
-async function openGoogleAuthUrl(url){
-  if(!url)throw new Error('missing_google_auth_url');
-
-  // Preferred inside Pi Browser.
-  if(window.Pi?.openUrlInSystemBrowser){
-    try{
-      const result=Pi.openUrlInSystemBrowser(url);
-      if(result&&typeof result.then==='function')await result;
-      return true;
-    }catch(e){
-      console.warn('Pi.openUrlInSystemBrowser failed',e);
-    }
-  }
-
-  // Fallback for normal browsers / Pi versions where SDK external open fails.
-  try{
-    const w=window.open(url,'_blank','noopener,noreferrer');
-    if(w)return true;
-  }catch(e){
-    console.warn('window.open failed',e);
-  }
-
-  // Last resort: same tab redirect.
-  location.assign(url);
-  return true;
-}
-
 async function connectGoogleDrive(){
   if(driveBusy)return;
-  if(!isCloudReady()){
-    toast(currentLanguage==='en'?'Sign in with Pi first':'سجّل الدخول بحساب Pi أولًا');
-    return;
-  }
+  if(!isCloudReady())return toast(currentLanguage==='en'?'Sign in with Pi first':'سجّل الدخول بحساب Pi أولًا');
 
-  setDriveBusy(true,currentLanguage==='en'?'Preparing Google sign-in...':'جاري تجهيز تسجيل الدخول إلى Google...');
+  const bridgeUrl=`${location.origin}/google-connect.html#token=${encodeURIComponent(cloud.token)}`;
+  $('#googleDriveStatus').textContent=currentLanguage==='en'?'Opening Google sign-in…':'جاري فتح تسجيل Google…';
+
+  // Do not call /api/google from Pi Browser. Open the bridge immediately.
+  if(window.Pi?.openUrlInSystemBrowser){
+    try{
+      const ret=Pi.openUrlInSystemBrowser(bridgeUrl);
+      if(ret&&typeof ret.catch==='function')ret.catch(()=>{});
+      return;
+    }catch(e){console.warn('Pi external browser failed',e)}
+  }
   try{
-    const d=await googleApi({body:{action:'auth_url'}});
-    if(!d?.url)throw new Error('no_auth_url');
-
-    // Save marker so the app knows the user initiated the OAuth flow.
-    sessionStorage.setItem('chatway-google-oauth-started',String(Date.now()));
-    await openGoogleAuthUrl(d.url);
-
-    $('#googleDriveStatus').textContent=currentLanguage==='en'
-      ?'Google sign-in opened in browser'
-      :'تم فتح تسجيل Google في المتصفح';
-  }catch(e){
-    console.error('Google connect error',e);
-    let msg=currentLanguage==='en'?'Could not start Google sign-in':'تعذر بدء تسجيل الدخول إلى Google';
-
-    if(e.message==='pi_login_required'){
-      msg=currentLanguage==='en'?'Sign in with Pi first':'سجّل الدخول بحساب Pi أولًا';
-    }else if(e.message==='google_oauth_not_configured'){
-      msg=currentLanguage==='en'
-        ?'Google OAuth is not configured on Vercel'
-        :'إعدادات Google OAuth غير مكتملة على Vercel';
-    }else if(e.status===401){
-      msg=currentLanguage==='en'
-        ?'Pi session expired. Sign in again.'
-        :'انتهت جلسة Pi. سجل الدخول مرة أخرى.';
-    }else if(e.message==='google_api_network_error'){
-      msg=currentLanguage==='en'
-        ?'Could not reach the Google connection API'
-        :'تعذر الاتصال بخدمة ربط Google';
-    }
-
-    $('#googleDriveStatus').textContent=msg;
-    toast(msg);
-  }finally{
-    setDriveBusy(false);
-  }
+    const w=window.open(bridgeUrl,'_blank','noopener,noreferrer');
+    if(w)return;
+  }catch(e){console.warn('window.open failed',e)}
+  location.href=bridgeUrl;
 }
 async function backupGoogleDrive(){
   if(driveBusy)return;
@@ -1325,18 +1274,17 @@ $('#restoreFromGoogleDrive').onclick=restoreGoogleDrive;
 $('#disconnectGoogleDrive').onclick=disconnectGoogleDrive;
 $('#languageSelect').onchange=e=>applyLanguage(e.target.value,true);
 
-// Returning from external browser OAuth.
-(async()=>{
-  const qp=new URL(location.href).searchParams;
-  if(qp.get('google')==='connected'){
-    history.replaceState({},'',location.pathname);
-    localStorage.setItem(GOOGLE_LINK_KEY,'1');
-    setTimeout(async()=>{
-      await updateGoogleDriveUI(currentLanguage==='en'?'Google Drive connected':'تم ربط Google Drive');
-      toast(currentLanguage==='en'?'Google Drive connected':'تم ربط Google Drive');
-    },500);
-  }
-})();
+let _googleStatusRefreshAt=0;
+async function refreshGoogleOnReturn(){
+  if(!isCloudReady()||document.visibilityState==='hidden')return;
+  if(Date.now()-_googleStatusRefreshAt<1800)return;
+  _googleStatusRefreshAt=Date.now();
+  await updateGoogleDriveUI();
+}
+window.addEventListener('focus',refreshGoogleOnReturn);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshGoogleOnReturn()});
+
+
 
 const _lastDriveBackup=localStorage.getItem('chatway-last-drive-backup');
 if(_lastDriveBackup)$('#googleBackupInfo').textContent=(currentLanguage==='en'?'Last backup: ':'آخر نسخة: ')+_lastDriveBackup;
