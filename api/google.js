@@ -121,7 +121,7 @@ module.exports = async function handler(req,res){
         headers:{Prefer:'resolution=merge-duplicates,return=minimal'}
       });
       res.statusCode=302;
-      res.setHeader('Location',`${APP_URL}/?google=connected`);
+      res.setHeader('Location',`${APP_URL}/google-connect.html?connected=1`);
       return res.end();
     }
 
