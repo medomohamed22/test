@@ -1,0 +1,8 @@
+{
+  "name": "chatway-vercel",
+  "version": "5.0.0",
+  "private": true,
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

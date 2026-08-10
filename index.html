@@ -190,6 +190,22 @@ radial-gradient(circle at 18px 18px, color-mix(in srgb,var(--purple) 5%,transpar
 .chat-context .danger-action{color:var(--danger)}
 .chat-context button{display:flex;align-items:center;gap:9px}
 
+
+/* ===== ChatWay v5 realtime UX ===== */
+.pi-login.loading{pointer-events:none;opacity:.88}
+.pi-login.loading .cloud-dot{display:none}
+.pi-login-spinner{display:none;width:17px;height:17px;border:2px solid color-mix(in srgb,var(--purple) 24%,transparent);border-top-color:var(--purple);border-radius:50%;animation:piSpin .7s linear infinite}
+.pi-login.loading .pi-login-spinner{display:block}
+@keyframes piSpin{to{transform:rotate(360deg)}}
+.msg-row.mentioned .bubble{outline:2px solid color-mix(in srgb,var(--yellow) 75%,transparent)}
+.mention-badge{font-size:10px;color:#7a5d00;background:var(--yellow);border-radius:999px;padding:2px 6px;font-weight:900}
+.system-row{display:flex;justify-content:center;margin:10px 0}
+.system-message{max-width:88%;background:var(--purpleSoft);color:var(--muted);font-size:10px;padding:7px 11px;border-radius:999px;text-align:center}
+.retry-msg{border:0;background:transparent;color:var(--yellow);font-weight:900;font-size:11px;padding:0 2px}
+.delivery-failed{color:#ffb8c2!important;opacity:1!important}
+.net-pill{position:fixed;top:78px;left:50%;transform:translateX(-50%);z-index:55;background:#1d1827;color:#fff;border-radius:999px;padding:6px 11px;font-size:10px;display:none}
+.net-pill.show{display:block}
+
 </style>
 
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
@@ -205,7 +221,7 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
       <div class="avatar">CW</div>
       <div><div class="brand">ChatWay</div></div>
       <div class="spacer"></div>
-      <button class="pi-login" id="piLoginBtn"><span class="cloud-dot" id="cloudDot"></span><span class="pi-label">دخول Pi</span></button>
+      <button class="pi-login" id="piLoginBtn"><span class="cloud-dot" id="cloudDot"></span><span class="pi-login-spinner"></span><span class="pi-label">دخول Pi</span></button>
     </div>
     <div class="search-wrap"><div class="search"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8c85a0" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="searchChats" placeholder="ابحث في المحادثات..."></div></div>
     <div class="filters">
@@ -355,7 +371,7 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
 
 <div class="viewer" id="viewer"><div class="viewer-toolbar"><button id="closeViewer">✕</button><div><button id="zoomOut">−</button><button id="zoomIn">+</button></div></div><div id="viewerContent"></div></div>
 <div class="undo-toast" id="undoToast"><span id="undoText">تمت الأرشفة</span><button id="undoBtn">تراجع</button></div>
-<div class="toast" id="toast"></div>
+<div class="net-pill" id="netPill">لا يوجد اتصال — سيتم إعادة الإرسال تلقائيًا</div><div class="toast" id="toast"></div>
 
 <script>
 
@@ -495,7 +511,7 @@ async function renderChats(q=''){
   root.innerHTML=chats.map(c=>`<div class="chat-item ${c.blocked?'blocked':''}" data-id="${c.id}">
     <div class="avatar">${esc(initials(c.name))}</div>
     <div class="chat-main"><div class="line"><div class="name">${esc(c.name)}</div>
-      <div class="badges">${c.type==='group'?'<span class="group-tag">مجموعة</span>':''}${c.blocked?'<span class="block-badge">🚫</span>':''}${c.locked?'<span class="locked-mark">🔐</span>':''}${c.pinned?'<span class="pin">📌</span>':''}${c.muted?'<span class="mutedIcon">🔕</span>':''}${c.unread?`<span class="badge">${c.unread}</span>`:''}</div>
+      <div class="badges">${c.type==='group'?'<span class="group-tag">مجموعة</span>':''}${c.mentionUnread?`<span class="mention-badge">@${c.mentionUnread}</span>`:''}${c.blocked?'<span class="block-badge">🚫</span>':''}${c.locked?'<span class="locked-mark">🔐</span>':''}${c.pinned?'<span class="pin">📌</span>':''}${c.muted?'<span class="mutedIcon">🔕</span>':''}${c.unread?`<span class="badge">${c.unread}</span>`:''}</div>
       <div class="time">${fmtTime(c.updatedAt)}</div></div>
       <div class="preview">${c.draft?'<b style="color:var(--danger)">مسودة: </b>'+esc(c.draft):esc(c.last||'ابدأ المحادثة')}</div>
     </div></div>`).join('');
@@ -566,18 +582,18 @@ async function renderMessages(filter=''){
   if(!filter){const rows=[...box.querySelectorAll('.msg-row[data-id]')],ids=rows.map(x=>Number(x.dataset.id));const prefix=ids.length>0&&ids.length<visible.length&&ids.every((id,i)=>id===Number(visible[i].id));if(prefix){let last=dayLabel(visible[ids.length-1].createdAt),html='';for(let i=ids.length;i<visible.length;i++){const m=visible[i],dl=dayLabel(m.createdAt);if(dl!==last){html+=`<div class="date-sep"><span>${dl}</span></div>`;last=dl}html+=messageHTML(m)}box.insertAdjacentHTML('beforeend',html);bindMessageGestures();bindCustomPlayers();requestAnimationFrame(()=>box.scrollTop=box.scrollHeight);return}}
   let lastDay='',html='';for(const m of visible){const dl=dayLabel(m.createdAt);if(dl!==lastDay){html+=`<div class="date-sep"><span>${dl}</span></div>`;lastDay=dl}html+=messageHTML(m)}box.innerHTML=html;bindMessageGestures();bindCustomPlayers();requestAnimationFrame(()=>box.scrollTop=box.scrollHeight)
 }
-function replySnippet(m){return m.type==='text'?(m.text||''):m.type==='image'?'📷 صورة':m.type==='video'?'🎥 فيديو':m.type==='audio'?'🎙️ صوت':'📄 '+(m.name||'ملف')}
+function replySnippet(m){return m.type==='system'?'إشعار مجموعة':m.type==='text'?(m.text||''):m.type==='image'?'📷 صورة':m.type==='video'?'🎥 فيديو':m.type==='audio'?'🎙️ صوت':'📄 '+(m.name||'ملف')}
 function formatDuration(sec){if(!Number.isFinite(sec)||sec<0)sec=0;const mm=Math.floor(sec/60),ss=Math.floor(sec%60);return `${mm}:${String(ss).padStart(2,'0')}`}
-function messageHTML(m){let c='';
+function messageHTML(m){if(m.type==='system')return `<div class="system-row"><div class="system-message">${esc(m.text||'')}</div></div>`;let c='';
 if(m.deleted)c='<div class="deleted">🚫 تم حذف هذه الرسالة</div>';
 else if(m.type==='text')c=`<div>${esc(m.text)}</div>${linkPreview(m.text)}`;
-else if(m.type==='image')c=`<div class="media clickable-media" data-src="${m.data}" data-kind="image"><img src="${m.data}" alt=""></div>`;
+else if(m.type==='image')c=`<div class="media clickable-media" data-src="${m.data}" data-kind="image"><img src="${m.data}" alt="" loading="lazy" decoding="async"></div>`;
 else if(m.type==='video')c=`<div class="media video-player" data-media-player="video"><video src="${m.data}" playsinline preload="metadata"></video><div class="player-center"><button class="player-play" type="button">▶</button></div><div class="player-bottom"><button class="video-toggle" type="button">▶</button><input class="player-range video-range" type="range" min="0" max="1000" value="0"><span class="player-time">0:00 / 0:00</span><button class="video-full" type="button">⛶</button></div></div>`;
 else if(m.type==='audio')c=`<div class="media audio-player" data-media-player="audio"><audio src="${m.data}" preload="metadata"></audio><button class="audio-play" type="button">▶</button><div class="audio-wave"><input class="audio-track" type="range" min="0" max="1000" value="0"><span class="audio-time">0:00 / 0:00</span></div></div>`;
 else if(m.type==='location'){const mapUrl=`https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}`;c=`<a class="location-card external-map" href="${mapUrl}" data-map-url="${mapUrl}"><div class="map-art"><span class="map-pin">📍</span></div><div class="location-info"><b>الموقع الحالي</b><div class="coords">${Number(m.lat).toFixed(6)}, ${Number(m.lng).toFixed(6)} • دقة ${Math.round(m.accuracy||0)} م</div></div></a>`}
 else c=`<a class="file-pill" download="${esc(m.name||'file')}" href="${m.data}">📄 <div><b>${esc(m.name||'ملف')}</b><div class="tiny">${formatBytes(m.size||0)} • اضغط للتنزيل</div></div></a>`;
 let rep=m.replyTo?`<div class="reply-box">${esc(m.replyTo.text)}</div>`:'',ticks=m.sender==='me'?`<span class="ticks ${m.status==='read'?'read':''}">${m.status==='sent'?'✓':'✓✓'}</span>`:'',exp=m.expiresAt?`<span class="expiring"> • ⏳ مؤقتة</span>`:'';const groupSender=activeChatType==='group'&&!m.deleted?`<div class="group-sender-name">@${esc(m.senderName||(m.sender==='me'?'أنا':'عضو'))}</div>`:'';
-return `<div class="msg-row ${m.sender==='me'?'me':'other'} ${selectedIds.has(m.id)?'selected':''} ${['image','video','audio','file'].includes(m.type)?'has-media':''}" data-id="${m.id}"><div class="bubble">${m.starred?'<span class="star">★</span>':''}${m.pinned?'<div class="pin-badge">📌 مثبتة</div>':''}${m.forwarded?'<div class="forwarded">↪️ تمت إعادة التوجيه</div>':''}${groupSender}${rep}${c}${m.edited?'<span class="edited">تم التعديل</span>':''}<div class="msg-meta">${fmtTime(m.createdAt)}${exp} ${ticks}</div>${m.reaction?`<span class="reaction">${m.reaction}</span>`:''}</div></div>`}
+return `<div class="msg-row ${m.sender==='me'?'me':'other'} ${m.mentioned?'mentioned':''} ${selectedIds.has(m.id)?'selected':''} ${['image','video','audio','file'].includes(m.type)?'has-media':''}" data-id="${m.id}"><div class="bubble">${m.starred?'<span class="star">★</span>':''}${m.pinned?'<div class="pin-badge">📌 مثبتة</div>':''}${m.forwarded?'<div class="forwarded">↪️ تمت إعادة التوجيه</div>':''}${groupSender}${rep}${c}${m.edited?'<span class="edited">تم التعديل</span>':''}<div class="msg-meta">${fmtTime(m.createdAt)}${exp} ${ticks}</div>${m.reaction?`<span class="reaction">${m.reaction}</span>`:''}</div></div>`}
 function formatBytes(n){if(!n)return '0 KB';const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return `${n.toFixed(i?1:0)} ${u[i]}`}
 async function openExternalUrl(url){if(!url)return;try{if(window.Pi?.openUrlInSystemBrowser){await window.Pi.openUrlInSystemBrowser(url);return}}catch(e){console.warn('Pi system browser',e)}try{const w=window.open(url,'_blank','noopener,noreferrer');if(w)return}catch{}location.href=url}
 function bindCustomPlayers(){$$('[data-media-player]').forEach(w=>{if(w.dataset.boundPlayer==='1')return;w.dataset.boundPlayer='1';if(w.dataset.mediaPlayer==='video'){const v=w.querySelector('video'),center=w.querySelector('.player-play'),toggle=w.querySelector('.video-toggle'),range=w.querySelector('.video-range'),time=w.querySelector('.player-time'),full=w.querySelector('.video-full');const sync=()=>{const d=Number.isFinite(v.duration)?v.duration:0,cur=Number.isFinite(v.currentTime)?v.currentTime:0;range.value=d?String(Math.round(cur/d*1000)):'0';time.textContent=`${formatDuration(cur)} / ${formatDuration(d)}`;const playing=!v.paused&&!v.ended;center.textContent=playing?'❚❚':'▶';toggle.textContent=playing?'❚❚':'▶';center.style.opacity=playing?'.18':'1'};const flip=()=>v.paused?v.play().catch(()=>{}):v.pause();center.onclick=e=>{e.stopPropagation();flip()};toggle.onclick=e=>{e.stopPropagation();flip()};range.oninput=e=>{e.stopPropagation();if(Number.isFinite(v.duration))v.currentTime=(Number(range.value)/1000)*v.duration};full.onclick=e=>{e.stopPropagation();if(v.requestFullscreen)v.requestFullscreen().catch(()=>openViewer('video',v.src));else openViewer('video',v.src)};v.addEventListener('loadedmetadata',sync);v.addEventListener('timeupdate',sync);v.addEventListener('play',sync);v.addEventListener('pause',sync);v.addEventListener('ended',sync);v.onclick=e=>{e.stopPropagation();flip()};sync()}else{const a=w.querySelector('audio'),btn=w.querySelector('.audio-play'),range=w.querySelector('.audio-track'),time=w.querySelector('.audio-time');const sync=()=>{const d=Number.isFinite(a.duration)?a.duration:0,cur=Number.isFinite(a.currentTime)?a.currentTime:0;range.value=d?String(Math.round(cur/d*1000)):'0';time.textContent=`${formatDuration(cur)} / ${formatDuration(d)}`;btn.textContent=!a.paused&&!a.ended?'❚❚':'▶'};btn.onclick=e=>{e.stopPropagation();a.paused?a.play().catch(()=>{}):a.pause()};range.oninput=e=>{e.stopPropagation();if(Number.isFinite(a.duration))a.currentTime=(Number(range.value)/1000)*a.duration};a.addEventListener('loadedmetadata',sync);a.addEventListener('timeupdate',sync);a.addEventListener('play',sync);a.addEventListener('pause',sync);a.addEventListener('ended',sync);sync()}})}
@@ -587,13 +603,13 @@ document.addEventListener('click',e=>{if(!e.target.closest('#contextMenu')&&!e.t
 
 document.addEventListener('pointerdown',e=>{const context=$('#contextMenu'),react=$('#reactBar'),chatContext=$('#chatContextMenu');if(context?.classList.contains('active')&&!e.target.closest('#contextMenu'))context.classList.remove('active');if(react?.classList.contains('active')&&!e.target.closest('#reactBar'))react.classList.remove('active');if(chatContext?.classList.contains('active')&&!e.target.closest('#chatContextMenu'))chatContext.classList.remove('active')},{capture:true});
 
-async function setReply(id){const m=await get('messages',id);replyTo={id:m.id,text:replySnippet(m),sender:m.sender};$('#replyWho').textContent=m.sender==='me'?'الرد على نفسك':'الرد على الطرف الآخر';$('#replyText').textContent=replyTo.text;$('#replyPreview').classList.add('active');$('#messageInput').focus()}
+async function setReply(id){const m=await get('messages',id);replyTo={id:m.id,clientId:m.clientId||'',userId:m.senderUserId||(m.sender==='me'?(window.__chatwayCloudUserId||''):''),text:replySnippet(m),sender:m.sender};$('#replyWho').textContent=m.sender==='me'?'الرد على نفسك':'الرد على الطرف الآخر';$('#replyText').textContent=replyTo.text;$('#replyPreview').classList.add('active');$('#messageInput').focus()}
 $('#cancelReply').onclick=()=>{replyTo=null;$('#replyPreview').classList.remove('active')}
 $$('#contextMenu button').forEach(b=>b.onclick=async()=>{const action=b.dataset.action,m=await get('messages',selectedMessageId);$('#contextMenu').classList.remove('active');if(action==='reply')return setReply(m.id);if(action==='pin'){if(m.pinned){m.pinned=false;await put('messages',m);toast('تمت إزالة تثبيت الرسالة')}else{for(const x of (await all('messages')).filter(x=>x.chatId===activeChatId)){if(x.pinned){x.pinned=false;await put('messages',x)}}m.pinned=true;await put('messages',m);toast('تم تثبيت الرسالة')}await renderPinned();return renderMessages()}if(action==='forward'){selectedIds=new Set([m.id]);return openForwardModal()}if(action==='select'){selectionMode=true;selectedIds=new Set([m.id]);updateSelectionUI();return renderMessages()}if(action==='react'){const r=$('#reactBar');r.style.left='20px';r.style.bottom='110px';r.classList.add('active');return}if(action==='star'){m.starred=!m.starred;await put('messages',m);return renderMessages()}if(action==='copy'){if(m.text)navigator.clipboard?.writeText(m.text);return toast('تم النسخ')}if(action==='edit'){if(m.sender!=='me'||m.type!=='text'||m.deleted)return toast('يمكن تعديل رسائلك النصية فقط');editMessageId=m.id;$('#editInput').value=m.text;$('#editModal').classList.add('active');return}if(action==='deleteMe'){await del('messages',m.id);return renderMessages()}if(action==='deleteAll'){m.deleted=true;m.text='';m.data='';await put('messages',m);return renderMessages()}})
 $$('#reactBar button').forEach(b=>b.onclick=async()=>{const m=await get('messages',selectedMessageId);m.reaction=m.reaction===b.textContent?'':b.textContent;await put('messages',m);$('#reactBar').classList.remove('active');renderMessages()})
 $('#cancelEdit').onclick=()=>$('#editModal').classList.remove('active');$('#saveEdit').onclick=async()=>{const m=await get('messages',editMessageId);const t=$('#editInput').value.trim();if(t){m.text=t;m.edited=true;await put('messages',m);await renderMessages()}$('#editModal').classList.remove('active')}
 async function sendText(){const input=$('#messageInput'),text=input.value.trim();if(!text||!activeChatId)return;const now=Date.now();const chat=await get('chats',activeChatId);const id=await add('messages',{chatId:activeChatId,type:'text',text,sender:senderMode,senderName:senderMode==='other'?(chat.type==='group'?(chat.members||[])[0]||'عضو':''):undefined,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null});await updateChatAfterMessage(text,now,senderMode==='other');input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();playTone(senderMode==='me'?'send':'receive');if(senderMode==='me'){setTimeout(()=>advanceStatus(id,'delivered'),500);setTimeout(()=>advanceStatus(id,'read'),1400);if(botEnabled)simulateReply()} }
-function updateMessageStatusDom(id,status){const row=document.querySelector(`.msg-row[data-id="${id}"]`),ticks=row?.querySelector('.ticks');if(!ticks)return;ticks.textContent=status==='sent'?'✓':'✓✓';ticks.classList.toggle('read',status==='read')}
+function updateMessageStatusDom(id,status){const row=document.querySelector(`.msg-row[data-id="${id}"]`),ticks=row?.querySelector('.ticks');if(!ticks)return;ticks.classList.toggle('read',status==='read');ticks.classList.toggle('delivery-failed',status==='failed');ticks.innerHTML=status==='pending'?'◷':status==='failed'?`<button class="retry-msg" data-retry="${id}">!</button>`:status==='sent'?'✓':'✓✓';const rb=ticks.querySelector('.retry-msg');if(rb)rb.onclick=e=>{e.stopPropagation();window.chatwayRetryMessage?.(id)}}
 async function advanceStatus(id,status){const m=await get('messages',id);if(!m)return;m.status=status;await put('messages',m);if(activeChatId===m.chatId)updateMessageStatusDom(m.id,m.status)}
 async function updateChatAfterMessage(last,now,incrementUnread=false){const c=await get('chats',activeChatId);c.updatedAt=now;c.last=last;c.draft='';if(incrementUnread&&!$('#chatView').classList.contains('active'))c.unread=(c.unread||0)+1;await put('chats',c);renderChats($('#searchChats').value.trim())}
 async function simulateReply(){const c=await get('chats',activeChatId);$('#chatStatus').textContent='يكتب الآن...';setTimeout(async()=>{if(!activeChatId)return;const replies=['تمام 👌','وصلتني الرسالة 💜','حلو جدًا 😄','ماشي، نتكلم بعد شوية','تمام، فهمتك','😂😂'];const text=replies[Math.floor(Math.random()*replies.length)],now=Date.now();await add('messages',{chatId:activeChatId,type:'text',text,sender:'other',createdAt:now,status:'read'});c.updatedAt=now;c.last=text;c.lastSeen=now;await put('chats',c);$('#chatStatus').textContent='متصل الآن';await renderMessages();renderChats($('#searchChats').value.trim());playTone('receive')},900+Math.random()*1300)}
@@ -613,7 +629,7 @@ async function renderMedia(){
   const root=$('#mediaCards');
   if(!msgs.length){root.innerHTML='<div class="empty"><b>لا توجد وسائط بعد</b>الصور والفيديوهات والملفات ستظهر هنا.</div>';return}
   root.innerHTML=`<div class="media-library">${msgs.map(m=>{
-    const preview=m.type==='image'?`<img src="${m.data}" alt="">`:m.type==='video'?`<video src="${m.data}" muted playsinline preload="metadata"></video>`:m.type==='audio'?`<audio src="${m.data}" controls preload="metadata" style="width:90%;margin:24px auto"></audio>`:'<div class="file-big">📄</div>';
+    const preview=m.type==='image'?`<img src="${m.data}" alt="" loading="lazy" decoding="async">`:m.type==='video'?`<video src="${m.data}" muted playsinline preload="metadata"></video>`:m.type==='audio'?`<audio src="${m.data}" controls preload="metadata" style="width:90%;margin:24px auto"></audio>`:'<div class="file-big">📄</div>';
     const name=m.name||(m.type==='image'?'صورة':m.type==='video'?'فيديو':m.type==='audio'?'رسالة صوتية':'ملف');
     return `<div class="media-item-card"><div class="media-preview-box">${preview}</div><div class="media-item-meta"><b>${esc(name)}</b><small>${new Date(m.createdAt).toLocaleString('ar-EG')}${m.size?' • '+formatBytes(m.size):''}</small></div><div class="media-actions"><button class="media-view" data-view-media="${m.id}">عرض</button><button class="media-download" data-download-media="${m.id}">تنزيل</button></div></div>`
   }).join('')}</div>`;
@@ -758,7 +774,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   const channels = new Map();
   const transfers = new Map();
   let accountChannel = null, syncInterval = null, pullingPending = false;
-  let cloud = { token:null, user:null, supabaseUrl:null, supabaseKey:null, expiresAt:0, client:null };
+  let cloud = { token:null, user:null, supabaseUrl:null, supabaseKey:null, vapidPublicKey:'', expiresAt:0, client:null };
   let cloudSearchTimer = null, typingTimer = null, refreshTimer = null;
 
   function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2)); }
@@ -773,10 +789,10 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   }
   function saveCloud(){
     if(!cloud.token)return localStorage.removeItem(CLOUD_KEY);
-    localStorage.setItem(CLOUD_KEY,JSON.stringify({token:cloud.token,user:cloud.user,supabaseUrl:cloud.supabaseUrl,supabaseKey:cloud.supabaseKey,expiresAt:cloud.expiresAt}));
+    localStorage.setItem(CLOUD_KEY,JSON.stringify({token:cloud.token,user:cloud.user,supabaseUrl:cloud.supabaseUrl,supabaseKey:cloud.supabaseKey,vapidPublicKey:cloud.vapidPublicKey,expiresAt:cloud.expiresAt}));
   }
   function renderCloudUI(){
-    const logged=!!cloud.user;
+    const logged=!!cloud.user;window.__chatwayCloudUserId=cloud.user?.id||'';
     const btn=$('#piLoginBtn');
     btn.classList.toggle('logged',logged);
     btn.querySelector('.pi-label').textContent=logged?`@${cloud.user.username}`:'دخول Pi';btn.title=logged?`@${cloud.user.username}`:'تسجيل الدخول بـ Pi';
@@ -803,7 +819,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       const raw=JSON.parse(localStorage.getItem(CLOUD_KEY)||'null'); if(!raw?.token)return renderCloudUI();
       const claims=decodeJwt(raw.token); if(!claims?.exp||claims.exp*1000<Date.now()+30000){localStorage.removeItem(CLOUD_KEY);return renderCloudUI()}
       cloud={...cloud,...raw};makeClient();renderCloudUI();
-      await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();scheduleRefresh();
+      await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();enablePush();scheduleRefresh();openDeepLinkedRoom();
     }catch(e){console.warn('restore cloud',e);logoutCloud(false)}
   }
   function scheduleRefresh(){
@@ -811,22 +827,28 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     const ms=Math.max(60000,cloud.expiresAt-Date.now()-5*60*1000);
     refreshTimer=setTimeout(()=>{toast('جلسة Pi تحتاج تجديدًا');},ms);
   }
+  function setPiLoginLoading(on){
+    const btn=$('#piLoginBtn');if(!btn)return;
+    btn.classList.toggle('loading',on);btn.disabled=on;
+    const label=btn.querySelector('.pi-label');
+    if(on)label.textContent='جاري الدخول...';else renderCloudUI();
+  }
   async function loginPi(){
     if(isCloudReady())return toast(`مسجل بالفعل @${cloud.user.username}`);
     if(!window.Pi?.authenticate)return toast('افتح الموقع داخل Pi Browser لتسجيل الدخول');
-    const buttons=[$('#piLoginBtn')];buttons.forEach(b=>{if(b)b.disabled=true});
+    setPiLoginLoading(true);
     try{
       const auth=await window.Pi.authenticate(['username'], payment=>console.warn('Incomplete Pi payment ignored',payment));
       const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken:auth.accessToken})});
-      cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;
+      cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.vapidPublicKey=data.vapidPublicKey||'';cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;
       sessionStorage.setItem('violetPiAccessToken',auth.accessToken);
-      makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();scheduleRefresh();toast(`أهلاً @${cloud.user.username}`);
+      makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();enablePush();scheduleRefresh();openDeepLinkedRoom();toast(`أهلاً @${cloud.user.username}`);
     }catch(e){console.error('Pi login',e);toast(e.message==='pi_unauthorized'?'تعذر التحقق من حساب Pi':'فشل تسجيل الدخول بـ Pi')}
-    finally{buttons.forEach(b=>{if(b)b.disabled=false})}
+    finally{setPiLoginLoading(false)}
   }
   async function refreshPiSession(){
     const accessToken=sessionStorage.getItem('violetPiAccessToken');if(!accessToken)return false;
-    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();scheduleRefresh();return true}catch{return false}
+    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.vapidPublicKey=data.vapidPublicKey||'';cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();enablePush();scheduleRefresh();openDeepLinkedRoom();return true}catch{return false}
   }
   async function logoutCloud(show=true){
     for(const ch of channels.values()){try{await cloud.client?.removeChannel(ch)}catch{}}channels.clear();
@@ -841,9 +863,17 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     for(const room of rooms){
       let c=chats.find(x=>x.cloudRoomId===room.id);
       const members=(room.members||[]).map(m=>m.username).filter(Boolean);
-      const patch={name:room.name,type:room.kind==='group'?'group':'direct',members,cloudRoomId:room.id,roomTopic:room.topic,cloudMembers:room.members||[],isCloud:true,lastSeen:Date.now()};
+      const patch={name:room.name,type:room.kind==='group'?'group':'direct',members,cloudRoomId:room.id,roomTopic:room.topic,cloudMembers:room.members||[],isCloud:true,lastSeen:Date.now(),createdBy:room.createdBy||null};
       if(c){Object.assign(c,patch);await put('chats',c)}
-      else{const id=await add('chats',chatDefaults({...patch,updatedAt:Date.now(),last:''}));c=await get('chats',id);chats.push(c)}
+      else{
+        const id=await add('chats',chatDefaults({...patch,updatedAt:Date.now(),last:'',mentionUnread:0}));
+        c=await get('chats',id);chats.push(c);
+        if(room.kind==='group'){
+          const owner=(room.members||[]).find(m=>m.role==='owner');
+          const text=room.createdBy===cloud.user?.id?'أنشأت المجموعة':`أضافك @${owner?.username||'مستخدم'} إلى المجموعة`;
+          await add('messages',{chatId:id,type:'system',text,sender:'system',createdAt:Date.now(),status:'read'});
+        }
+      }
       await ensureRoomChannel(c);
     }
     await renderChats($('#searchChats').value.trim());
@@ -865,14 +895,14 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       .on('broadcast',{event:'delivery_receipt'},({payload})=>receiveAccountReceipt(payload));
     accountChannel.subscribe(status=>{
       if(status==='SUBSCRIBED'){syncCloudRooms().then(()=>pullPendingDeliveries()).catch(console.warn)}
-      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('Account realtime channel',status);
+      if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){console.warn('Account realtime channel',status);setTimeout(()=>{accountChannel=null;ensureAccountChannel().catch(()=>{})},1200)}
     });
     return accountChannel;
   }
 
   function startBackgroundSync(){
     clearInterval(syncInterval);
-    syncInterval=setInterval(()=>{if(document.visibilityState==='visible'&&isCloudReady()){syncCloudRooms().then(()=>pullPendingDeliveries()).catch(()=>{})}},15000);
+    syncInterval=setInterval(()=>{if(document.visibilityState==='visible'&&isCloudReady()){syncCloudRooms().then(()=>pullPendingDeliveries()).catch(()=>{})}},5000);
   }
 
   async function receiveAccountReceipt(p){
@@ -896,9 +926,9 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
 
   async function blobToDataURL(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)})}
 
-  async function uploadDeliveryFile(file,clientId){
+  async function uploadDeliveryFile(chat,file,clientId){
     const safe=(file.name||'file').replace(/[^\w.\-\u0600-\u06FF]+/g,'_').slice(-120)||'file';
-    const path=`${cloud.user.id}/${clientId}/${Date.now()}-${safe}`;
+    const path=`${chat.cloudRoomId}/${cloud.user.id}/${clientId}/${Date.now()}-${safe}`;
     const {error}=await cloud.client.storage.from('violet-delivery').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false,cacheControl:'3600'});
     if(error)throw new Error(error.message||'storage_upload_failed');
     return path;
@@ -943,6 +973,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       .on('broadcast',{event:'media_start'},({payload})=>mediaStart(roomId,payload))
       .on('broadcast',{event:'media_chunk'},({payload})=>mediaChunk(roomId,payload))
       .on('broadcast',{event:'media_end'},({payload})=>mediaEnd(roomId,payload))
+      .on('broadcast',{event:'media_ready'},({payload})=>receiveMediaReady(roomId,payload))
       .on('broadcast',{event:'receipt'},({payload})=>receiveReceipt(roomId,payload))
       .on('broadcast',{event:'typing'},({payload})=>receiveTyping(roomId,payload))
       .on('broadcast',{event:'control'},({payload})=>receiveControl(roomId,payload))
@@ -977,9 +1008,11 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     if(!wire||wire.fromUserId===cloud.user?.id)return;
     const chat=await localChatByRoom(roomId);if(!chat)return;if(chat.blocked)return;if(chat.deletedLocally){chat.deletedLocally=false;await put('chats',chat)}
     const existing=(await all('messages')).find(m=>m.chatId===chat.id&&m.clientId===wire.clientId);if(existing)return;
-    const msg={chatId:chat.id,clientId:wire.clientId,type:wire.type||'text',text:wire.text||'',name:wire.name||'',mime:wire.mime||'',size:wire.size||0,data:data||wire.data||'',lat:wire.lat,lng:wire.lng,accuracy:wire.accuracy,sender:'other',senderName:wire.senderName||wire.fromUsername||'Pi',createdAt:wire.createdAt||Date.now(),status:'read',replyTo:wire.replyTo||null,forwarded:!!wire.forwarded};
+    const msg={chatId:chat.id,clientId:wire.clientId,type:wire.type||'text',text:wire.text||'',name:wire.name||'',mime:wire.mime||'',size:wire.size||0,data:data||wire.data||'',lat:wire.lat,lng:wire.lng,accuracy:wire.accuracy,sender:'other',senderName:wire.senderName||wire.fromUsername||'Pi',senderUserId:wire.fromUserId||'',createdAt:wire.createdAt||Date.now(),status:'read',replyTo:wire.replyTo||null,forwarded:!!wire.forwarded};
+    const myMention='@'+String(cloud.user?.username||'').toLowerCase();
+    msg.mentioned=!!(myMention!=='@'&&String(msg.text||'').toLowerCase().includes(myMention))||msg.replyTo?.userId===cloud.user?.id;
     await add('messages',msg);chat.updatedAt=msg.createdAt;chat.last=replySnippet(msg);chat.lastSeen=Date.now();
-    const active=activeChatId===chat.id&&$('#chatView').classList.contains('active');if(!active)chat.unread=(chat.unread||0)+1;await put('chats',chat);
+    const active=activeChatId===chat.id&&$('#chatView').classList.contains('active');if(!active){chat.unread=(chat.unread||0)+1;if(msg.mentioned)chat.mentionUnread=(chat.mentionUnread||0)+1}await put('chats',chat);
     if(active){await renderMessages();$('#chatStatus').textContent='متصل الآن'}await renderChats($('#searchChats').value.trim());playTone('receive');
     try{await sendEvent(chat,'receipt',{clientId:wire.clientId,status:active?'read':'delivered',fromUserId:cloud.user.id})}catch{}
   }
@@ -988,7 +1021,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   function mediaChunk(roomId,p){const t=transfers.get(`${roomId}:${p.transferId}`);if(!t||typeof p.index!=='number')return;if(t.chunks[p.index]===undefined){t.chunks[p.index]=p.data||'';t.received++}}
   async function mediaEnd(roomId,p){const key=`${roomId}:${p.transferId}`,t=transfers.get(key);if(!t)return;if(t.received!==t.chunks.length){setTimeout(()=>mediaEnd(roomId,p),500);return}transfers.delete(key);await saveIncoming(roomId,t.meta,t.chunks.join(''))}
   async function receiveReceipt(roomId,p){if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(!chat)return;const msgs=await all('messages'),m=msgs.find(x=>x.chatId===chat.id&&x.clientId===p.clientId&&x.sender==='me');if(!m)return;if(p.status==='read')m.status='read';else if(m.status!=='read')m.status='delivered';await put('messages',m);if(activeChatId===chat.id)updateMessageStatusDom(m.id,m.status)}
-  async function receiveTyping(roomId,p){if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(chat&&activeChatId===chat.id)$('#chatStatus').textContent=p.typing?`${p.username||'الطرف الآخر'} يكتب الآن...`:'متصل الآن'}
+  async function receiveTyping(roomId,p){if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(chat&&activeChatId===chat.id){if(p.recording)$('#chatStatus').textContent=`${p.username||'الطرف الآخر'} يسجل رسالة صوتية...`;else $('#chatStatus').textContent=p.typing?`${p.username||'الطرف الآخر'} يكتب الآن...`:'متصل الآن'}}
   async function applyControl(roomId,p){
     if(!p||p.fromUserId===cloud.user?.id)return;const chat=await localChatByRoom(roomId);if(!chat)return;
     const target=p.targetClientId||p.clientId;const msgs=await all('messages'),m=msgs.find(x=>x.chatId===chat.id&&x.clientId===target);if(!m)return;
@@ -1005,7 +1038,9 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     try{await sendEvent(chat,'control',{action,clientId:targetClientId,targetClientId,fromUserId:cloud.user.id,...extra})}catch{}
   }
   async function updatePresence(roomId,ch){
-    const chat=await localChatByRoom(roomId);if(!chat||activeChatId!==chat.id)return;const state=ch.presenceState();const online=Object.keys(state||{}).some(k=>k!==cloud.user.id);$('#chatStatus').textContent=online?'متصل الآن':'غير متصل';
+    const chat=await localChatByRoom(roomId);if(!chat||activeChatId!==chat.id)return;const state=ch.presenceState();const online=Object.keys(state||{}).some(k=>k!==cloud.user.id);
+    const peer=(chat.cloudMembers||[]).find(m=>m.user_id!==cloud.user.id);
+    $('#chatStatus').textContent=online?'متصل الآن':(peer?.last_seen_at?'آخر ظهور '+relativeSeen(new Date(peer.last_seen_at).getTime()):'غير متصل');
   }
 
   async function searchPiUsers(q){if(!isCloudReady()||q.trim().length<1){$('#cloudUserResults').innerHTML='';return []}try{const d=await api('/api/users?q='+encodeURIComponent(q.trim()));return d.users||[]}catch(e){console.warn(e);return []}}
@@ -1022,15 +1057,20 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
 
   // Wrap existing local behaviors: local chats remain usable; cloud rooms use ephemeral Realtime transport.
   const originalOpenChat=openChat;
-  openChat=async function(id,bypass=false){await originalOpenChat(id,bypass);if(activeChatId!==id)return;const chat=await get('chats',id);if(chat?.cloudRoomId&&isCloudReady()){await ensureRoomChannel(chat);const ch=channels.get(chat.cloudRoomId);if(ch)updatePresence(chat.cloudRoomId,ch);for(const m of (await all('messages')).filter(x=>x.chatId===id&&x.sender==='other'&&x.clientId)){try{await sendEvent(chat,'receipt',{clientId:m.clientId,status:'read',fromUserId:cloud.user.id})}catch{}}}}
+  openChat=async function(id,bypass=false){await originalOpenChat(id,bypass);if(activeChatId!==id)return;const cc=await get('chats',id);if(cc?.mentionUnread){cc.mentionUnread=0;await put('chats',cc);renderChats($('#searchChats').value.trim())}const chat=await get('chats',id);if(chat?.cloudRoomId&&isCloudReady()){await ensureRoomChannel(chat);const ch=channels.get(chat.cloudRoomId);if(ch)updatePresence(chat.cloudRoomId,ch);for(const m of (await all('messages')).filter(x=>x.chatId===id&&x.sender==='other'&&x.clientId)){try{await sendEvent(chat,'receipt',{clientId:m.clientId,status:'read',fromUserId:cloud.user.id})}catch{}}}}
 
   const originalSendText=sendText;
   sendText=async function(){
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalSendText();
     const input=$('#messageInput'),text=input.value.trim();if(!text)return;const now=Date.now(),clientId=uuid();
-    const msg={chatId:chat.id,clientId,type:'text',text,sender:'me',senderName:cloud.user.username,createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
-    await add('messages',msg);chat.updatedAt=now;chat.last=text;chat.draft='';await put('chats',chat);input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
-    try{await enqueueDelivery(chat,msg)}catch(e){console.error('queue send',e);toast('تعذر إرسال الرسالة الآن')}
+    const msg={chatId:chat.id,clientId,type:'text',text,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
+    const localMsgId=await add('messages',msg);msg.id=localMsgId;chat.updatedAt=now;chat.last=text;chat.draft='';await put('chats',chat);input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
+    try{
+      await Promise.allSettled([sendCloudWire(chat,msg),enqueueDelivery(chat,msg)]);
+      msg.status='sent';await put('messages',msg);updateMessageStatusDom(localMsgId,'sent');
+    }catch(e){
+      msg.status='failed';await put('messages',msg);updateMessageStatusDom(localMsgId,'failed');console.error('send',e);
+    }
   };
   $('#sendBtn').onclick=sendText;
 
@@ -1039,15 +1079,17 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalSendFile(file);
     if(!file||!activeChatId)return;if(file.size>30*1024*1024)return toast('الحد 30MB');
     const data=await readFile(file),type=file.type.startsWith('image/')?'image':file.type.startsWith('video/')?'video':file.type.startsWith('audio/')?'audio':'file';
-    const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type,name:file.name,mime:file.type,size:file.size,data,sender:'me',senderName:cloud.user.username,createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
+    const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type,name:file.name,mime:file.type,size:file.size,data,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
     await add('messages',msg);const label=type==='image'?'📷 صورة':type==='video'?'🎥 فيديو':type==='audio'?'🎙️ صوت':'📄 '+file.name;chat.updatedAt=now;chat.last=label;chat.draft='';await put('chats',chat);replyTo=null;$('#replyPreview').classList.remove('active');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
-    try{toast('جاري إرسال الملف…');const storagePath=await uploadDeliveryFile(file,clientId);await enqueueDelivery(chat,msg,storagePath);toast('تم إرسال الملف')}catch(e){console.error('file queue',e);toast('تعذر إرسال الملف الآن')}
+    try{toast('جاري إرسال الملف…');const storagePath=await uploadDeliveryFile(chat,file,clientId);
+      await Promise.allSettled([enqueueDelivery(chat,msg,storagePath),sendEvent(chat,'media_ready',{wire:wireBase(msg),storagePath,fromUserId:cloud.user.id})]);
+      msg.status='sent';await put('messages',msg);const row=(await all('messages')).find(x=>x.clientId===clientId&&x.chatId===chat.id);if(row)updateMessageStatusDom(row.id,'sent');toast('تم إرسال الملف')}catch(e){console.error('file queue',e);msg.status='failed';await put('messages',msg);const row=(await all('messages')).find(x=>x.clientId===clientId&&x.chatId===chat.id);if(row)updateMessageStatusDom(row.id,'failed');toast('سيتم إعادة الإرسال تلقائيًا')}
   };
 
   const originalLocation=sendCurrentLocation;
   sendCurrentLocation=async function(){
     const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalLocation();if(!navigator.geolocation)return toast('المتصفح لا يدعم GPS');toast('جاري طلب إذن الموقع…');
-    navigator.geolocation.getCurrentPosition(async pos=>{const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:'location',lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,sender:'me',senderName:cloud.user.username,createdAt:now,status:'sent',expiresAt:chat.disappearMs?now+chat.disappearMs:null};await add('messages',msg);chat.updatedAt=now;chat.last='📍 موقع حالي';await put('chats',chat);await renderMessages();await renderChats($('#searchChats').value.trim());try{await enqueueDelivery(chat,msg)}catch(e){console.warn(e);toast('تعذر إرسال الموقع الآن')}},err=>toast(err.code===1?'تم رفض إذن الموقع':'تعذر تحديد الموقع'),{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+    navigator.geolocation.getCurrentPosition(async pos=>{const now=Date.now(),clientId=uuid(),msg={chatId:chat.id,clientId,type:'location',lat:pos.coords.latitude,lng:pos.coords.longitude,accuracy:pos.coords.accuracy,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null};await add('messages',msg);chat.updatedAt=now;chat.last='📍 موقع حالي';await put('chats',chat);await renderMessages();await renderChats($('#searchChats').value.trim());try{await Promise.allSettled([sendCloudWire(chat,msg),enqueueDelivery(chat,msg)]);msg.status='sent';await put('messages',msg)}catch(e){msg.status='failed';await put('messages',msg);console.warn(e);toast('سيتم إعادة الإرسال تلقائيًا')}},err=>toast(err.code===1?'تم رفض إذن الموقع':'تعذر تحديد الموقع'),{enableHighAccuracy:true,timeout:15000,maximumAge:0});
   };
 
   const originalRenderEmoji=renderEmoji;
@@ -1076,7 +1118,22 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   let groupSearchTimer=null;
   $('#groupMemberSearch').addEventListener('input',e=>{clearTimeout(groupSearchTimer);groupSearchTimer=setTimeout(()=>renderGroupUserSearch(e.target.value.replace(/^@/,'')),220)});
   $('#openGroupModal').onclick=async()=>{if(!isCloudReady()){await loginPi();if(!isCloudReady())return}$('#newChatModal').classList.remove('active');groupSelectedUsers=[];renderGroupSelected();$('#groupMemberSearch').value='';$('#groupUserResults').innerHTML='';$('#groupModal').classList.add('active');setTimeout(()=>$('#groupName').focus(),80)};
-  $('#createGroup').onclick=async()=>{if(!isCloudReady())return loginPi();const btn=$('#createGroup'),name=$('#groupName').value.trim();if(!name)return toast('اكتب اسم المجموعة');if(!groupSelectedUsers.length)return toast('أضف مستخدمًا واحدًا على الأقل');btn.disabled=true;btn.textContent='جاري إنشاء المجموعة…';try{const oldIds=new Set((await all('chats')).filter(c=>c.cloudRoomId).map(c=>c.cloudRoomId));const d=await api('/api/rooms',{method:'POST',body:JSON.stringify({kind:'group',name,memberIds:groupSelectedUsers.map(u=>u.id)})});await materializeRooms(d.rooms||[]);const chat=(await all('chats')).find(c=>c.cloudRoomId&&!oldIds.has(c.cloudRoomId)&&c.type==='group');$('#groupModal').classList.remove('active');$('#groupName').value='';groupSelectedUsers=[];renderGroupSelected();if(chat)await openChat(chat.id);toast('تم إنشاء المجموعة')}catch(e){console.error(e);toast(e.message||'تعذر إنشاء المجموعة')}finally{btn.disabled=false;btn.textContent='إنشاء'}};
+  $('#createGroup').onclick=async()=>{if(!isCloudReady())return loginPi();const btn=$('#createGroup'),name=$('#groupName').value.trim();if(!name)return toast('اكتب اسم المجموعة');if(!groupSelectedUsers.length)return toast('أضف مستخدمًا واحدًا على الأقل');btn.disabled=true;btn.textContent='جاري إنشاء المجموعة…';try{const oldIds=new Set((await all('chats')).filter(c=>c.cloudRoomId).map(c=>c.cloudRoomId));const d=await api('/api/rooms',{method:'POST',body:JSON.stringify({kind:'group',name,memberIds:groupSelectedUsers.map(u=>u.id)})});await materializeRooms(d.rooms||[]);const chat=(await all('chats')).find(c=>c.cloudRoomId&&!oldIds.has(c.cloudRoomId)&&c.type==='group');$('#groupModal').classList.remove('active');$('#groupName').value='';groupSelectedUsers=[];renderGroupSelected();if(chat){
+      await openChat(chat.id);
+      const now=Date.now(),sys={chatId:chat.id,clientId:uuid(),type:'system',text:`@${cloud.user.username} أنشأ المجموعة`,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending'};
+      const sid=await add('messages',sys);await renderMessages();
+      try{await Promise.allSettled([sendCloudWire(chat,sys),enqueueDelivery(chat,sys)]);sys.id=sid;sys.status='sent';await put('messages',sys)}catch{}
+    }toast('تم إنشاء المجموعة')}catch(e){console.error(e);toast(e.message||'تعذر إنشاء المجموعة')}finally{btn.disabled=false;btn.textContent='إنشاء'}};
+
+
+  const baseMicClick=$('#micBtn').onclick;
+  $('#micBtn').onclick=async e=>{
+    const chat=activeChatId?await get('chats',activeChatId):null;
+    const wasRecording=recording;
+    if(chat?.cloudRoomId&&isCloudReady()&&!wasRecording)sendEvent(chat,'typing',{recording:true,typing:false,username:cloud.user.username,fromUserId:cloud.user.id}).catch(()=>{});
+    await baseMicClick?.call($('#micBtn'),e);
+    if(chat?.cloudRoomId&&isCloudReady()&&wasRecording)sendEvent(chat,'typing',{recording:false,typing:false,username:cloud.user.username,fromUserId:cloud.user.id}).catch(()=>{});
+  };
 
   // Typing indicator is transient only.
   $('#messageInput').addEventListener('input',async()=>{if(!isCloudReady()||!activeChatId)return;const chat=await get('chats',activeChatId);if(!chat?.cloudRoomId)return;clearTimeout(typingTimer);try{await sendEvent(chat,'typing',{typing:true,username:cloud.user.username,fromUserId:cloud.user.id})}catch{}typingTimer=setTimeout(()=>sendEvent(chat,'typing',{typing:false,username:cloud.user.username,fromUserId:cloud.user.id}).catch(()=>{}),900)});
@@ -1088,7 +1145,96 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   $$('#reactBar button').forEach(btn=>{const old=btn.onclick;btn.onclick=async e=>{const id=selectedMessageId,chat=activeChatId?await get('chats',activeChatId):null;await old?.call(btn,e);const m=id?await get('messages',id):null;if(chat?.cloudRoomId&&isCloudReady()&&m?.clientId)enqueueControl(chat,m.clientId,'reaction',{reaction:m.reaction||''}).catch(console.warn)}});
 
   const oldForwardTo=forwardTo;
-  forwardTo=async function(chatId){const chosen=(await all('messages')).filter(m=>selectedIds.has(m.id)).map(m=>({...m}));await oldForwardTo(chatId);const target=await get('chats',chatId);if(target?.cloudRoomId&&isCloudReady()){for(const m of chosen){const copy={...m,clientId:uuid(),createdAt:Date.now(),sender:'me',forwarded:true};delete copy.id;delete copy.chatId;try{let storagePath=null;if(['image','video','audio','file'].includes(copy.type)&&copy.data){const blob=await (await fetch(copy.data)).blob();const file=new File([blob],copy.name||`forward-${Date.now()}`,{type:copy.mime||blob.type||'application/octet-stream'});storagePath=await uploadDeliveryFile(file,copy.clientId)}await enqueueDelivery(target,copy,storagePath)}catch(e){console.warn('forward queue',e)}}}};
+  forwardTo=async function(chatId){const chosen=(await all('messages')).filter(m=>selectedIds.has(m.id)).map(m=>({...m}));await oldForwardTo(chatId);const target=await get('chats',chatId);if(target?.cloudRoomId&&isCloudReady()){for(const m of chosen){const copy={...m,clientId:uuid(),createdAt:Date.now(),sender:'me',forwarded:true};delete copy.id;delete copy.chatId;try{let storagePath=null;if(['image','video','audio','file'].includes(copy.type)&&copy.data){const blob=await (await fetch(copy.data)).blob();const file=new File([blob],copy.name||`forward-${Date.now()}`,{type:copy.mime||blob.type||'application/octet-stream'});storagePath=await uploadDeliveryFile(target,file,copy.clientId)}await enqueueDelivery(target,copy,storagePath)}catch(e){console.warn('forward queue',e)}}}};
+
+
+  function b64ToUint8Array(base64){
+    const padding='='.repeat((4-base64.length%4)%4),s=(base64+padding).replace(/-/g,'+').replace(/_/g,'/');
+    const raw=atob(s);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+  }
+  async function enablePush(){
+    if(!isCloudReady()||!cloud.vapidPublicKey||!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return false;
+    try{
+      const reg=await navigator.serviceWorker.register('/sw.js',{scope:'/'});
+      let perm=Notification.permission;
+      if(perm==='default')perm=await Notification.requestPermission();
+      if(perm!=='granted')return false;
+      let sub=await reg.pushManager.getSubscription();
+      if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToUint8Array(cloud.vapidPublicKey)});
+      await api('/api/push',{method:'POST',body:JSON.stringify({action:'subscribe',subscription:sub.toJSON()})});
+      return true;
+    }catch(e){console.warn('push setup',e);return false}
+  }
+
+  async function heartbeat(){
+    if(!isCloudReady())return;
+    try{await api('/api/users',{method:'POST',body:'{}'})}catch{}
+  }
+  let heartbeatTimer=null;
+  function startHeartbeat(){
+    clearInterval(heartbeatTimer);heartbeat();
+    heartbeatTimer=setInterval(()=>{if(document.visibilityState==='visible')heartbeat()},30000);
+  }
+  document.addEventListener('visibilitychange',()=>{if(isCloudReady()){heartbeat();if(document.visibilityState==='visible'){reconnectRealtime();retryPendingMessages()}}});
+  window.addEventListener('online',()=>{$('#netPill').classList.remove('show');reconnectRealtime();retryPendingMessages();pullPendingDeliveries()});
+  window.addEventListener('offline',()=>$('#netPill').classList.add('show'));
+
+  async function reconnectRealtime(){
+    if(!isCloudReady())return;
+    try{
+      await ensureAccountChannel();
+      for(const c of (await all('chats')).filter(c=>c.cloudRoomId&&!c.blocked))await ensureRoomChannel(c);
+    }catch(e){console.warn('reconnect',e)}
+  }
+
+  async function retryMessage(id){
+    if(!isCloudReady()||!navigator.onLine)return;
+    const msg=await get('messages',id);if(!msg||!['failed','pending'].includes(msg.status))return;
+    const chat=await get('chats',msg.chatId);if(!chat?.cloudRoomId||chat.blocked)return;
+    msg.status='pending';await put('messages',msg);updateMessageStatusDom(id,'pending');
+    try{
+      if(['image','video','audio','file'].includes(msg.type)&&msg.data){
+        const blob=await (await fetch(msg.data)).blob();
+        const file=new File([blob],msg.name||`file-${Date.now()}`,{type:msg.mime||blob.type||'application/octet-stream'});
+        const storagePath=await uploadDeliveryFile(chat,file,msg.clientId);
+        await Promise.allSettled([
+          enqueueDelivery(chat,msg,storagePath),
+          sendEvent(chat,'media_ready',{wire:wireBase(msg),storagePath,fromUserId:cloud.user.id})
+        ]);
+      }else{
+        await Promise.allSettled([enqueueDelivery(chat,msg),sendCloudWire(chat,msg)]);
+      }
+      msg.status='sent';await put('messages',msg);updateMessageStatusDom(id,'sent');
+    }catch(e){
+      msg.status='failed';await put('messages',msg);updateMessageStatusDom(id,'failed');
+    }
+  }
+  window.chatwayRetryMessage=retryMessage;
+  async function retryPendingMessages(){
+    if(!isCloudReady()||!navigator.onLine)return;
+    const pending=(await all('messages')).filter(m=>m.sender==='me'&&['pending','failed'].includes(m.status)&&m.clientId);
+    for(const m of pending.slice(0,25))await retryMessage(m.id);
+  }
+
+  async function receiveMediaReady(roomId,p){
+    if(!p||p.fromUserId===cloud.user?.id||!p.storagePath||!p.wire)return;
+    try{
+      const data=await downloadDeliveryFile(p.storagePath);
+      await saveIncoming(roomId,p.wire,data);
+    }catch(e){console.warn('media ready',e)}
+  }
+
+  // Push message deep link.
+  navigator.serviceWorker?.addEventListener?.('message',async e=>{
+    if(e.data?.type==='open_room'&&e.data.roomId){
+      await syncCloudRooms();const c=await localChatByRoom(e.data.roomId);if(c)openChat(c.id);
+    }
+  });
+  async function openDeepLinkedRoom(){
+    const roomId=new URL(location.href).searchParams.get('room');if(!roomId||!isCloudReady())return;
+    await syncCloudRooms();const c=await localChatByRoom(roomId);if(c)await openChat(c.id);
+    history.replaceState({},'',location.pathname);
+  }
 
   // Account buttons.
   $('#piLoginBtn').onclick=()=>isCloudReady()?toast(`@${cloud.user.username}`):loginPi();
