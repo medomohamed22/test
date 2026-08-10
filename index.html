@@ -206,6 +206,24 @@ radial-gradient(circle at 18px 18px, color-mix(in srgb,var(--purple) 5%,transpar
 .net-pill{position:fixed;top:78px;left:50%;transform:translateX(-50%);z-index:55;background:#1d1827;color:#fff;border-radius:999px;padding:6px 11px;font-size:10px;display:none}
 .net-pill.show{display:block}
 
+
+/* ===== ChatWay v7 advanced chat ===== */
+.pin-stack{display:none;background:var(--surface);border-bottom:1px solid var(--line)}
+.pin-stack.active{display:block}.pin-stack-head{display:flex;align-items:center;padding:7px 10px;gap:8px;font-size:10px;color:var(--muted)}
+.pin-dots{display:flex;gap:3px;margin-inline-start:auto}.pin-dot{width:5px;height:5px;border-radius:50%;background:var(--line)}.pin-dot.active{background:var(--purple)}
+.advanced-search{display:flex;gap:6px;padding:7px;background:var(--surface);border-bottom:1px solid var(--line)}
+.advanced-search select,.advanced-search input{border:1px solid var(--line);background:var(--surface2);color:var(--text);height:36px;border-radius:11px;padding:0 8px;min-width:0}.advanced-search input{flex:1}
+.audio-speed{border:0;background:var(--purpleSoft);color:var(--purple);font-weight:900;border-radius:999px;padding:5px 7px;font-size:9px}
+.voice-bars{height:24px;display:flex;align-items:center;gap:2px;overflow:hidden}.voice-bars i{display:block;width:2px;border-radius:4px;background:currentColor;opacity:.55}
+.storage-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.storage-row:last-child{border:0}.storage-row .meta{flex:1}.storage-row small{display:block;color:var(--muted);margin-top:3px}
+.storage-meter{height:7px;background:var(--purpleSoft);border-radius:999px;overflow:hidden;margin-top:6px}.storage-meter span{display:block;height:100%;background:var(--purple);border-radius:999px}
+.group-admin-card{display:none}.group-admin-card.active{display:block}.perm-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.member-manage{display:flex;align-items:center;gap:8px;padding:7px 0}.member-manage .member-name{flex:1;font-weight:800}.role-pill{font-size:9px;padding:3px 7px;border-radius:999px;background:var(--purpleSoft);color:var(--purple)}
+.invite-box{padding:9px;border:1px dashed var(--line);border-radius:13px;word-break:break-all;font-size:10px;margin-top:8px}
+.join-request{display:flex;align-items:center;gap:7px;padding:8px 0;border-bottom:1px solid var(--line)}.join-request b{flex:1}
+.edit-info{font-size:9px;opacity:.7;margin-top:3px}
+.cleanup-chip{border:1px solid var(--line);background:var(--surface2);color:var(--text);padding:7px 9px;border-radius:999px;font-size:10px}
+
 </style>
 
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
@@ -283,8 +301,15 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
     <button class="round-btn" id="searchChatBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
     <button class="round-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3"/></svg></button>
   </div>
-  <div class="pinned-bar" id="pinnedBar"><span>📌</span><b>رسالة مثبتة</b><span class="pintext" id="pinnedText"></span><span>⌄</span></div>
-  <div class="search-in-chat" id="searchInChat"><input id="searchMessageInput" placeholder="بحث داخل المحادثة"><button class="icon-btn" id="closeChatSearch">✕</button></div>
+  <div class="pinned-bar" id="pinnedBar"><span>📌</span><b id="pinnedLabel">الرسائل المثبتة</b><span class="pintext" id="pinnedText"></span><span class="pin-dots" id="pinDots"></span><span>⌄</span></div>
+  <div class="search-in-chat" id="searchInChat" style="flex-wrap:wrap">
+  <input id="searchMessageInput" placeholder="بحث داخل المحادثة">
+  <button class="icon-btn" id="closeChatSearch">✕</button>
+  <div class="advanced-search" style="width:100%;padding:0">
+    <select id="searchType"><option value="all">الكل</option><option value="text">نص</option><option value="image">صور</option><option value="video">فيديو</option><option value="audio">صوتيات</option><option value="file">ملفات</option><option value="links">روابط</option><option value="pinned">مثبتة</option></select>
+    <input id="searchSender" placeholder="اسم المرسل داخل المجموعة">
+  </div>
+</div>
   <div class="messages" id="messages"></div>
   <button class="scroll-bottom" id="scrollBottom">↓</button>
   <div class="mention-box" id="mentionBox"></div>
@@ -319,8 +344,23 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
       <select class="selectish" id="disappearSelect"><option value="0">⏳ الرسائل المؤقتة: إيقاف</option><option value="86400000">24 ساعة</option><option value="604800000">7 أيام</option><option value="7776000000">90 يومًا</option></select>
       <div class="color-row"><span class="small">لون رسائلي:</span><input type="color" id="bubbleColor" value="#6f3cff"></div>
       <select class="selectish" id="wallpaperSelect"><option value="dots">خلفية: نقاط</option><option value="plain">خلفية: سادة</option><option value="grid">خلفية: شبكة</option><option value="hearts">خلفية: ناعمة</option></select>
+      <select class="selectish" id="mediaRetention"><option value="0">الوسائط: لا حذف تلقائي</option><option value="604800000">حذف الوسائط بعد 7 أيام</option><option value="2592000000">حذف الوسائط بعد 30 يومًا</option><option value="7776000000">حذف الوسائط بعد 90 يومًا</option></select>
+      <button class="big-btn secondary" id="openStorageManager">💾 التخزين والبيانات</button>
       <button class="big-btn danger" id="clearChat">مسح المحادثة</button>
     </div></div>
+    <div class="card group-admin-card" id="groupAdminCard"><h3>إدارة المجموعة</h3>
+      <div id="groupRoleNote" class="small muted"></div>
+      <div class="perm-row"><span>فقط المشرفون يرسلون</span><input type="checkbox" id="onlyAdminsSend"></div>
+      <div class="perm-row"><span>فقط المشرفون يعدلون بيانات المجموعة</span><input type="checkbox" id="onlyAdminsEdit"></div>
+      <div class="perm-row"><span>فقط المشرفون يضيفون أعضاء</span><input type="checkbox" id="onlyAdminsAdd"></div>
+      <div class="perm-row"><span>الموافقة على طلبات الانضمام</span><input type="checkbox" id="joinApproval"></div>
+      <button class="big-btn secondary" id="saveGroupSettings">حفظ صلاحيات المجموعة</button>
+      <div id="groupMembersManage"></div>
+      <h3 style="margin-top:14px">رابط الدعوة</h3>
+      <div class="invite-box" id="inviteBox">لم يتم إنشاء رابط</div>
+      <div class="modal-actions" style="margin-top:8px"><button class="cancel" id="resetInvite">إلغاء الرابط</button><button class="ok" id="createInvite">إنشاء رابط</button></div>
+      <div id="joinRequests"></div>
+    </div>
   </div>
 </div>
 
@@ -352,6 +392,11 @@ try { window.Pi && Pi.init({ version: "2.0", sandbox: new URLSearchParams(locati
 <div class="modal-actions"><button class="cancel" id="cancelPin">إلغاء</button><button class="ok" id="confirmPin">تأكيد</button></div></div></div>
 
 <div class="modal" id="forwardModal"><div class="modal-card"><h3>إعادة توجيه إلى</h3><div id="forwardChatList"></div><div class="modal-actions"><button class="cancel" id="cancelForward">إلغاء</button></div></div></div>
+
+<div class="modal" id="storageModal"><div class="modal-card"><h3>التخزين والبيانات</h3>
+<div id="storageSummary"></div>
+<div class="modal-actions"><button class="cancel" id="closeStorage">إغلاق</button><button class="ok" id="cleanupNow">تنظيف حسب الإعدادات</button></div>
+</div></div>
 
 <div class="modal" id="filePreviewModal"><div class="modal-card"><h3>إرسال ملف</h3><div class="file-preview"><div class="ficon" id="previewIcon">📄</div><div class="fmeta"><b id="previewName"></b><span id="previewSize"></span></div></div>
 <div class="modal-actions"><button class="cancel" id="cancelFile">إلغاء</button><button class="ok" id="confirmFile">إرسال</button></div></div></div>
@@ -439,7 +484,7 @@ const del=async(n,id)=>{await ensureStorage();if(storageMode==='local'){lsWrite(
 const clearS=async n=>{await ensureStorage();if(storageMode==='local'){lsWrite(n,[]);return}return new Promise((res,rej)=>{const r=st(n,'readwrite').clear();r.onsuccess=()=>res();r.onerror=()=>rej(r.error)})};
 
 function chatDefaults(c={}){
-  return {name:'محادثة',updatedAt:Date.now(),last:'',unread:0,pinned:false,muted:false,favorite:false,archived:false,lastSeen:Date.now(),draft:'',type:'direct',members:[],bubbleColor:'#6f3cff',wallpaper:'dots',disappearMs:0,locked:false,pin:'',blocked:false,deletedLocally:false,...c,members:Array.isArray(c.members)?c.members:[]};
+  return {name:'محادثة',updatedAt:Date.now(),last:'',unread:0,pinned:false,muted:false,favorite:false,archived:false,lastSeen:Date.now(),draft:'',type:'direct',members:[],bubbleColor:'#6f3cff',wallpaper:'dots',disappearMs:0,mediaRetentionMs:0,locked:false,pin:'',blocked:false,deletedLocally:false,pinIndex:0,...c,members:Array.isArray(c.members)?c.members:[]};
 }
 async function readStoreFromDb(database,storeName){
   if(!database||!database.objectStoreNames.contains(storeName))return [];
@@ -569,7 +614,7 @@ $$('#chatContextMenu button[data-chat-action]').forEach(btn=>btn.onclick=async()
   await renderChats($('#searchChats').value.trim());
 });
 
-async function openChat(id,bypass=false){let c=await get('chats',id);if(!c)return;if(c.locked&&!bypass){pendingOpenChatId=id;pinMode='unlock';$('#pinTitle').textContent='أدخل PIN لفتح '+c.name;$('#pinInput').value='';$('#pinModal').classList.add('active');return}activeChatId=id;activeChatType=c.type||'direct';c.unread=0;await put('chats',c);$('#chatTitle').textContent=c.name;$('#chatAvatar').textContent=initials(c.name);$('#chatStatus').textContent=c.blocked?'محظور':(c.type==='group'?`${(c.members||[]).length} أعضاء`:'آخر ظهور '+relativeSeen(c.lastSeen));$('#messageInput').value=c.draft||'';$('#messages').className='messages wallpaper-'+(c.wallpaper||'dots');document.documentElement.style.setProperty('--bubbleMe',c.bubbleColor||'#6f3cff');$('#chatView').classList.add('active');await purgeExpired();await renderMessages();await renderPinned();await renderChats($('#searchChats').value.trim())}
+async function openChat(id,bypass=false){let c=await get('chats',id);if(!c)return;if(c.locked&&!bypass){pendingOpenChatId=id;pinMode='unlock';$('#pinTitle').textContent='أدخل PIN لفتح '+c.name;$('#pinInput').value='';$('#pinModal').classList.add('active');return}activeChatId=id;activeChatType=c.type||'direct';c.unread=0;await put('chats',c);$('#chatTitle').textContent=c.name;$('#chatAvatar').textContent=initials(c.name);$('#chatStatus').textContent=c.blocked?'محظور':(c.type==='group'?`${(c.members||[]).length} أعضاء`:'آخر ظهور '+relativeSeen(c.lastSeen));$('#messageInput').value=c.draft||'';$('#messages').className='messages wallpaper-'+(c.wallpaper||'dots');document.documentElement.style.setProperty('--bubbleMe',c.bubbleColor||'#6f3cff');$('#chatView').classList.add('active');await purgeExpired();await cleanupMedia(false);await renderMessages();await renderPinned();await renderChats($('#searchChats').value.trim())}
 function relativeSeen(t){if(!t)return 'غير معروف';const d=Date.now()-t;if(d<60000)return 'الآن';if(d<3600000)return `منذ ${Math.floor(d/60000)} د`;return new Date(t).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}
 async function purgeExpired(){const now=Date.now();for(const m of await all('messages'))if(m.expiresAt&&m.expiresAt<=now)await del('messages',m.id)}
 function extractUrl(text=''){const m=text.match(/https?:\/\/[^\s<]+/i);return m?m[0]:''}
@@ -589,11 +634,11 @@ if(m.deleted)c='<div class="deleted">🚫 تم حذف هذه الرسالة</div
 else if(m.type==='text')c=`<div>${esc(m.text)}</div>${linkPreview(m.text)}`;
 else if(m.type==='image')c=`<div class="media clickable-media" data-src="${m.data}" data-kind="image"><img src="${m.data}" alt="" loading="lazy" decoding="async"></div>`;
 else if(m.type==='video')c=`<div class="media video-player" data-media-player="video"><video src="${m.data}" playsinline preload="metadata"></video><div class="player-center"><button class="player-play" type="button">▶</button></div><div class="player-bottom"><button class="video-toggle" type="button">▶</button><input class="player-range video-range" type="range" min="0" max="1000" value="0"><span class="player-time">0:00 / 0:00</span><button class="video-full" type="button">⛶</button></div></div>`;
-else if(m.type==='audio')c=`<div class="media audio-player" data-media-player="audio"><audio src="${m.data}" preload="metadata"></audio><button class="audio-play" type="button">▶</button><div class="audio-wave"><input class="audio-track" type="range" min="0" max="1000" value="0"><span class="audio-time">0:00 / 0:00</span></div></div>`;
+else if(m.type==='audio'){const bars=Array.from({length:34},(_,i)=>`<i style="height:${7+((i*13+m.createdAt)%17)}px"></i>`).join('');c=`<div class="media audio-player" data-media-player="audio"><audio src="${m.data}" preload="metadata"></audio><button class="audio-play" type="button">▶</button><div class="audio-wave"><div class="voice-bars">${bars}</div><input class="audio-track" type="range" min="0" max="1000" value="0"><span class="audio-time">0:00 / 0:00</span></div><button class="audio-speed" type="button">1×</button></div>`;}
 else if(m.type==='location'){const mapUrl=`https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}`;c=`<a class="location-card external-map" href="${mapUrl}" data-map-url="${mapUrl}"><div class="map-art"><span class="map-pin">📍</span></div><div class="location-info"><b>الموقع الحالي</b><div class="coords">${Number(m.lat).toFixed(6)}, ${Number(m.lng).toFixed(6)} • دقة ${Math.round(m.accuracy||0)} م</div></div></a>`}
 else c=`<a class="file-pill" download="${esc(m.name||'file')}" href="${m.data}">📄 <div><b>${esc(m.name||'ملف')}</b><div class="tiny">${formatBytes(m.size||0)} • اضغط للتنزيل</div></div></a>`;
 let rep=m.replyTo?`<div class="reply-box">${esc(m.replyTo.text)}</div>`:'',ticks=m.sender==='me'?`<span class="ticks ${m.status==='read'?'read':''}">${m.status==='sent'?'✓':'✓✓'}</span>`:'',exp=m.expiresAt?`<span class="expiring"> • ⏳ مؤقتة</span>`:'';const groupSender=activeChatType==='group'&&!m.deleted?`<div class="group-sender-name">@${esc(m.senderName||(m.sender==='me'?'أنا':'عضو'))}</div>`:'';
-return `<div class="msg-row ${m.sender==='me'?'me':'other'} ${m.mentioned?'mentioned':''} ${selectedIds.has(m.id)?'selected':''} ${['image','video','audio','file'].includes(m.type)?'has-media':''}" data-id="${m.id}"><div class="bubble">${m.starred?'<span class="star">★</span>':''}${m.pinned?'<div class="pin-badge">📌 مثبتة</div>':''}${m.forwarded?'<div class="forwarded">↪️ تمت إعادة التوجيه</div>':''}${groupSender}${rep}${c}${m.edited?'<span class="edited">تم التعديل</span>':''}<div class="msg-meta">${fmtTime(m.createdAt)}${exp} ${ticks}</div>${m.reaction?`<span class="reaction">${m.reaction}</span>`:''}</div></div>`}
+return `<div class="msg-row ${m.sender==='me'?'me':'other'} ${m.mentioned?'mentioned':''} ${selectedIds.has(m.id)?'selected':''} ${['image','video','audio','file'].includes(m.type)?'has-media':''}" data-id="${m.id}"><div class="bubble">${m.starred?'<span class="star">★</span>':''}${m.pinned?'<div class="pin-badge">📌 مثبتة</div>':''}${m.forwarded?'<div class="forwarded">↪️ تمت إعادة التوجيه</div>':''}${groupSender}${rep}${c}${m.edited?`<span class="edited">تم التعديل${m.editCount>1?' • '+m.editCount+' مرات':''}</span>`:''}<div class="msg-meta">${fmtTime(m.createdAt)}${exp} ${ticks}</div>${m.reaction?`<span class="reaction">${m.reaction}</span>`:''}</div></div>`}
 function formatBytes(n){if(!n)return '0 KB';const u=['B','KB','MB','GB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return `${n.toFixed(i?1:0)} ${u[i]}`}
 async function openExternalUrl(url){if(!url)return;try{if(window.Pi?.openUrlInSystemBrowser){await window.Pi.openUrlInSystemBrowser(url);return}}catch(e){console.warn('Pi system browser',e)}try{const w=window.open(url,'_blank','noopener,noreferrer');if(w)return}catch{}location.href=url}
 function bindCustomPlayers(){$$('[data-media-player]').forEach(w=>{if(w.dataset.boundPlayer==='1')return;w.dataset.boundPlayer='1';if(w.dataset.mediaPlayer==='video'){const v=w.querySelector('video'),center=w.querySelector('.player-play'),toggle=w.querySelector('.video-toggle'),range=w.querySelector('.video-range'),time=w.querySelector('.player-time'),full=w.querySelector('.video-full');const sync=()=>{const d=Number.isFinite(v.duration)?v.duration:0,cur=Number.isFinite(v.currentTime)?v.currentTime:0;range.value=d?String(Math.round(cur/d*1000)):'0';time.textContent=`${formatDuration(cur)} / ${formatDuration(d)}`;const playing=!v.paused&&!v.ended;center.textContent=playing?'❚❚':'▶';toggle.textContent=playing?'❚❚':'▶';center.style.opacity=playing?'.18':'1'};const flip=()=>v.paused?v.play().catch(()=>{}):v.pause();center.onclick=e=>{e.stopPropagation();flip()};toggle.onclick=e=>{e.stopPropagation();flip()};range.oninput=e=>{e.stopPropagation();if(Number.isFinite(v.duration))v.currentTime=(Number(range.value)/1000)*v.duration};full.onclick=e=>{e.stopPropagation();if(v.requestFullscreen)v.requestFullscreen().catch(()=>openViewer('video',v.src));else openViewer('video',v.src)};v.addEventListener('loadedmetadata',sync);v.addEventListener('timeupdate',sync);v.addEventListener('play',sync);v.addEventListener('pause',sync);v.addEventListener('ended',sync);v.onclick=e=>{e.stopPropagation();flip()};sync()}else{const a=w.querySelector('audio'),btn=w.querySelector('.audio-play'),range=w.querySelector('.audio-track'),time=w.querySelector('.audio-time');const sync=()=>{const d=Number.isFinite(a.duration)?a.duration:0,cur=Number.isFinite(a.currentTime)?a.currentTime:0;range.value=d?String(Math.round(cur/d*1000)):'0';time.textContent=`${formatDuration(cur)} / ${formatDuration(d)}`;btn.textContent=!a.paused&&!a.ended?'❚❚':'▶'};btn.onclick=e=>{e.stopPropagation();a.paused?a.play().catch(()=>{}):a.pause()};range.oninput=e=>{e.stopPropagation();if(Number.isFinite(a.duration))a.currentTime=(Number(range.value)/1000)*a.duration};a.addEventListener('loadedmetadata',sync);a.addEventListener('timeupdate',sync);a.addEventListener('play',sync);a.addEventListener('pause',sync);a.addEventListener('ended',sync);sync()}})}
@@ -607,7 +652,7 @@ async function setReply(id){const m=await get('messages',id);replyTo={id:m.id,cl
 $('#cancelReply').onclick=()=>{replyTo=null;$('#replyPreview').classList.remove('active')}
 $$('#contextMenu button').forEach(b=>b.onclick=async()=>{const action=b.dataset.action,m=await get('messages',selectedMessageId);$('#contextMenu').classList.remove('active');if(action==='reply')return setReply(m.id);if(action==='pin'){if(m.pinned){m.pinned=false;await put('messages',m);toast('تمت إزالة تثبيت الرسالة')}else{for(const x of (await all('messages')).filter(x=>x.chatId===activeChatId)){if(x.pinned){x.pinned=false;await put('messages',x)}}m.pinned=true;await put('messages',m);toast('تم تثبيت الرسالة')}await renderPinned();return renderMessages()}if(action==='forward'){selectedIds=new Set([m.id]);return openForwardModal()}if(action==='select'){selectionMode=true;selectedIds=new Set([m.id]);updateSelectionUI();return renderMessages()}if(action==='react'){const r=$('#reactBar');r.style.left='20px';r.style.bottom='110px';r.classList.add('active');return}if(action==='star'){m.starred=!m.starred;await put('messages',m);return renderMessages()}if(action==='copy'){if(m.text)navigator.clipboard?.writeText(m.text);return toast('تم النسخ')}if(action==='edit'){if(m.sender!=='me'||m.type!=='text'||m.deleted)return toast('يمكن تعديل رسائلك النصية فقط');editMessageId=m.id;$('#editInput').value=m.text;$('#editModal').classList.add('active');return}if(action==='deleteMe'){await del('messages',m.id);return renderMessages()}if(action==='deleteAll'){m.deleted=true;m.text='';m.data='';await put('messages',m);return renderMessages()}})
 $$('#reactBar button').forEach(b=>b.onclick=async()=>{const m=await get('messages',selectedMessageId);m.reaction=m.reaction===b.textContent?'':b.textContent;await put('messages',m);$('#reactBar').classList.remove('active');renderMessages()})
-$('#cancelEdit').onclick=()=>$('#editModal').classList.remove('active');$('#saveEdit').onclick=async()=>{const m=await get('messages',editMessageId);const t=$('#editInput').value.trim();if(t){m.text=t;m.edited=true;await put('messages',m);await renderMessages()}$('#editModal').classList.remove('active')}
+$('#cancelEdit').onclick=()=>$('#editModal').classList.remove('active');$('#saveEdit').onclick=async()=>{const m=await get('messages',editMessageId);const t=$('#editInput').value.trim();if(t){m.text=t;m.edited=true;m.editCount=(m.editCount||0)+1;m.editedAt=Date.now();await put('messages',m);await renderMessages()}$('#editModal').classList.remove('active')}
 async function sendText(){const input=$('#messageInput'),text=input.value.trim();if(!text||!activeChatId)return;const now=Date.now();const chat=await get('chats',activeChatId);const id=await add('messages',{chatId:activeChatId,type:'text',text,sender:senderMode,senderName:senderMode==='other'?(chat.type==='group'?(chat.members||[])[0]||'عضو':''):undefined,createdAt:now,status:senderMode==='me'?'sent':'read',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null});await updateChatAfterMessage(text,now,senderMode==='other');input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();playTone(senderMode==='me'?'send':'receive');if(senderMode==='me'){setTimeout(()=>advanceStatus(id,'delivered'),500);setTimeout(()=>advanceStatus(id,'read'),1400);if(botEnabled)simulateReply()} }
 function updateMessageStatusDom(id,status){const row=document.querySelector(`.msg-row[data-id="${id}"]`),ticks=row?.querySelector('.ticks');if(!ticks)return;ticks.classList.toggle('read',status==='read');ticks.classList.toggle('delivery-failed',status==='failed');ticks.innerHTML=status==='pending'?'◷':status==='failed'?`<button class="retry-msg" data-retry="${id}">!</button>`:status==='sent'?'✓':'✓✓';const rb=ticks.querySelector('.retry-msg');if(rb)rb.onclick=e=>{e.stopPropagation();window.chatwayRetryMessage?.(id)}}
 async function advanceStatus(id,status){const m=await get('messages',id);if(!m)return;m.status=status;await put('messages',m);if(activeChatId===m.chatId)updateMessageStatusDom(m.id,m.status)}
@@ -676,7 +721,16 @@ function applyTheme(){const dark=localStorage.getItem('violet-theme')==='dark';d
 $('#exportData').onclick=async()=>{const p={version:2,exportedAt:new Date().toISOString(),chats:await all('chats'),messages:await all('messages')};const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='chatway-backup.json';a.click();URL.revokeObjectURL(a.href)}
 $('#clearData').onclick=async()=>{if(!confirm('حذف جميع بيانات المحادثات من هذا الجهاز؟'))return;await clearS('messages');await clearS('chats');renderChats();toast('تم حذف البيانات')}
 
-async function renderPinned(){if(!activeChatId)return;const p=(await all('messages')).find(m=>m.chatId===activeChatId&&m.pinned&&!m.deleted);$('#pinnedBar').classList.toggle('active',!!p);if(p){$('#pinnedText').textContent=replySnippet(p);$('#pinnedBar').onclick=()=>document.querySelector(`.msg-row[data-id="${p.id}"]`)?.scrollIntoView({behavior:'smooth',block:'center'})}}
+async function renderPinned(){
+  if(!activeChatId)return;
+  const c=await get('chats',activeChatId);
+  const pins=(await all('messages')).filter(x=>x.chatId===activeChatId&&x.pinned&&!x.deleted).sort((a,b)=>b.createdAt-a.createdAt).slice(0,5);
+  const bar=$('#pinnedBar');if(!pins.length){bar.classList.remove('active');return}
+  c.pinIndex=Math.min(c.pinIndex||0,pins.length-1);await put('chats',c);
+  const m=pins[c.pinIndex];$('#pinnedLabel').textContent=`مثبتة ${c.pinIndex+1}/${pins.length}`;$('#pinnedText').textContent=replySnippet(m);
+  $('#pinDots').innerHTML=pins.map((_,i)=>`<i class="pin-dot ${i===c.pinIndex?'active':''}"></i>`).join('');
+  bar.classList.add('active');bar.onclick=async()=>{c.pinIndex=((c.pinIndex||0)+1)%pins.length;await put('chats',c);renderPinned()}
+}
 function toggleSelected(id){selectedIds.has(id)?selectedIds.delete(id):selectedIds.add(id);if(!selectedIds.size)selectionMode=false;updateSelectionUI();renderMessages()}
 function updateSelectionUI(){selectionMode=selectedIds.size>0;$('#multiToolbar').classList.toggle('active',selectionMode);$('#selectCount').textContent=`${selectedIds.size} محدد`}
 $('#exitSelect').onclick=()=>{selectedIds.clear();selectionMode=false;updateSelectionUI();renderMessages()}
@@ -727,7 +781,8 @@ $('#lockChatBtn').onclick=async()=>{const c=await get('chats',activeChatId);if(c
 $('#cancelPin').onclick=()=>{$('#pinModal').classList.remove('active');pendingOpenChatId=null}
 $('#confirmPin').onclick=async()=>{const pin=$('#pinInput').value.trim();if(pin.length<4)return toast('PIN يجب أن يكون 4 أرقام أو أكثر');if(pinMode==='unlock'){const c=await get('chats',pendingOpenChatId);if(c.pin!==pin)return toast('PIN غير صحيح');$('#pinModal').classList.remove('active');const id=pendingOpenChatId;pendingOpenChatId=null;return openChat(id,true)}const c=await get('chats',activeChatId);if(pinMode==='set'){c.pin=pin;c.locked=true;toast('تم قفل المحادثة')}else{if(c.pin!==pin)return toast('PIN غير صحيح');c.pin='';c.locked=false;toast('تم إلغاء القفل')}await put('chats',c);$('#pinModal').classList.remove('active');renderChats($('#searchChats').value.trim())}
 
-$('#disappearSelect').onchange=async e=>{const c=await get('chats',activeChatId);c.disappearMs=+e.target.value;await put('chats',c);toast(c.disappearMs?'تم تشغيل الرسائل المؤقتة':'تم إيقاف الرسائل المؤقتة')}
+$('#disappearSelect').onchange=async e=>{const c=await get('chats',activeChatId);c.disappearMs=+e.target.value;await put('chats',c);toast(c.disappearMs?'تم تشغيل الرسائل المؤقتة':'تم إيقاف الرسائل المؤقتة')};
+$('#mediaRetention').onchange=async e=>{const c=await get('chats',activeChatId);c.mediaRetentionMs=+e.target.value;await put('chats',c);toast(c.mediaRetentionMs?'تم حفظ مدة الاحتفاظ بالوسائط':'لن يتم حذف الوسائط تلقائيًا')};
 $('#bubbleColor').onchange=async e=>{const c=await get('chats',activeChatId);c.bubbleColor=e.target.value;await put('chats',c);document.documentElement.style.setProperty('--bubbleMe',c.bubbleColor)}
 $('#wallpaperSelect').onchange=async e=>{const c=await get('chats',activeChatId);c.wallpaper=e.target.value;await put('chats',c);$('#messages').className='messages wallpaper-'+c.wallpaper}
 
@@ -735,7 +790,7 @@ async function renderGallery(kind='media'){const ms=(await all('messages')).filt
 $$('.gallery-tabs button').forEach(b=>b.onclick=()=>{$$('.gallery-tabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');renderGallery(b.dataset.gallery)})
 
 const oldOpenInfo=$('#openInfo').onclick;
-$('#openInfo').onclick=async()=>{const c=await get('chats',activeChatId);$('#infoName').textContent=c.name;$('#infoAvatar').textContent=initials(c.name);$('#infoLastSeen').innerHTML=(c.type==='group'?`<div class="group-members">${(c.members||[]).map(x=>`<span class="member-chip">@${esc(x)}</span>`).join('')}</div>`:'آخر ظهور '+relativeSeen(c.lastSeen));$('#disappearSelect').value=String(c.disappearMs||0);$('#bubbleColor').value=c.bubbleColor||'#6f3cff';$('#wallpaperSelect').value=c.wallpaper||'dots';await renderGallery('media');$$('.gallery-tabs button').forEach((x,i)=>x.classList.toggle('active',i===0));$('#infoPanel').classList.add('active')}
+$('#openInfo').onclick=async()=>{const c=await get('chats',activeChatId);$('#infoName').textContent=c.name;$('#infoAvatar').textContent=initials(c.name);$('#infoLastSeen').innerHTML=(c.type==='group'?`<div class="group-members">${(c.members||[]).map(x=>`<span class="member-chip">@${esc(x)}</span>`).join('')}</div>`:'آخر ظهور '+relativeSeen(c.lastSeen));$('#disappearSelect').value=String(c.disappearMs||0);$('#mediaRetention').value=String(c.mediaRetentionMs||0);$('#bubbleColor').value=c.bubbleColor||'#6f3cff';$('#wallpaperSelect').value=c.wallpaper||'dots';await renderGallery('media');$$('.gallery-tabs button').forEach((x,i)=>x.classList.toggle('active',i===0));$('#groupAdminCard').classList.toggle('active',c.type==='group'&&!!c.cloudRoomId);if(c.type==='group'&&c.cloudRoomId)renderGroupAdmin(c);$('#infoPanel').classList.add('active')}
 
 async function renderStats(){const chats=await all('chats'),msgs=await all('messages');const today=new Date();today.setHours(0,0,0,0);const media=msgs.filter(m=>['image','video','audio','file'].includes(m.type));const approx=media.reduce((a,m)=>a+(m.size||Math.round((m.data||'').length*.75)),0);const counts={};msgs.forEach(m=>counts[m.chatId]=(counts[m.chatId]||0)+1);let top='—',max=0;for(const c of chats)if((counts[c.id]||0)>max){max=counts[c.id];top=c.name}$('#statsGrid').innerHTML=`<div class="stat"><b>${chats.length}</b><span>محادثات</span></div><div class="stat"><b>${msgs.length}</b><span>رسائل</span></div><div class="stat"><b>${msgs.filter(m=>m.createdAt>=today.getTime()).length}</b><span>رسائل اليوم</span></div><div class="stat"><b>${media.length}</b><span>وسائط وملفات</span></div><div class="stat"><b>${formatBytes(approx)}</b><span>حجم الوسائط</span></div><div class="stat"><b style="font-size:12px">${esc(top)}</b><span>الأكثر نشاطًا</span></div>`}
 $('#refreshStats').onclick=renderStats
@@ -819,7 +874,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       const raw=JSON.parse(localStorage.getItem(CLOUD_KEY)||'null'); if(!raw?.token)return renderCloudUI();
       const claims=decodeJwt(raw.token); if(!claims?.exp||claims.exp*1000<Date.now()+30000){localStorage.removeItem(CLOUD_KEY);return renderCloudUI()}
       cloud={...cloud,...raw};makeClient();renderCloudUI();
-      await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();
+      await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();handleInviteLink();
     }catch(e){console.warn('restore cloud',e);logoutCloud(false)}
   }
   function scheduleRefresh(){
@@ -842,13 +897,13 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken:auth.accessToken})});
       cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;
       sessionStorage.setItem('violetPiAccessToken',auth.accessToken);
-      makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();toast(`أهلاً @${cloud.user.username}`);
+      makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();handleInviteLink();toast(`أهلاً @${cloud.user.username}`);
     }catch(e){console.error('Pi login',e);toast(e.message==='pi_unauthorized'?'تعذر التحقق من حساب Pi':'فشل تسجيل الدخول بـ Pi')}
     finally{setPiLoginLoading(false)}
   }
   async function refreshPiSession(){
     const accessToken=sessionStorage.getItem('violetPiAccessToken');if(!accessToken)return false;
-    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();return true}catch{return false}
+    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();handleInviteLink();return true}catch{return false}
   }
   async function logoutCloud(show=true){
     for(const ch of channels.values()){try{await cloud.client?.removeChannel(ch)}catch{}}channels.clear();
@@ -863,7 +918,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     for(const room of rooms){
       let c=chats.find(x=>x.cloudRoomId===room.id);
       const members=(room.members||[]).map(m=>m.username).filter(Boolean);
-      const patch={name:room.name,type:room.kind==='group'?'group':'direct',members,cloudRoomId:room.id,roomTopic:room.topic,cloudMembers:room.members||[],isCloud:true,lastSeen:Date.now(),createdBy:room.createdBy||null};
+      const patch={name:room.name,type:room.kind==='group'?'group':'direct',members,cloudRoomId:room.id,roomTopic:room.topic,cloudMembers:room.members||[],isCloud:true,lastSeen:Date.now(),createdBy:room.createdBy||null,groupSettings:room.groupSettings||null,myRole:room.myRole||'member'};
       if(c){Object.assign(c,patch);await put('chats',c)}
       else{
         const id=await add('chats',chatDefaults({...patch,updatedAt:Date.now(),last:'',mentionUnread:0}));
@@ -1061,7 +1116,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
 
   const originalSendText=sendText;
   sendText=async function(){
-    const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalSendText();
+    const chat=activeChatId?await get('chats',activeChatId):null;if(!chat?.cloudRoomId||!isCloudReady())return originalSendText();if(chat.type==='group'&&chat.groupSettings?.onlyAdminsSend&&!['owner','admin'].includes(chat.myRole))return toast('فقط مشرفو المجموعة يمكنهم الإرسال');
     const input=$('#messageInput'),text=input.value.trim();if(!text)return;const now=Date.now(),clientId=uuid();
     const msg={chatId:chat.id,clientId,type:'text',text,sender:'me',senderName:cloud.user.username,senderUserId:cloud.user.id,createdAt:now,status:'pending',expiresAt:chat.disappearMs?now+chat.disappearMs:null,replyTo:replyTo?{id:replyTo.id,text:replyTo.text}:null};
     const localMsgId=await add('messages',msg);msg.id=localMsgId;chat.updatedAt=now;chat.last=text;chat.draft='';await put('chats',chat);input.value='';replyTo=null;$('#replyPreview').classList.remove('active');await saveDraft('');await renderMessages();await renderChats($('#searchChats').value.trim());playTone('send');
@@ -1098,6 +1153,54 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     $$('#emojiGrid button').forEach(b=>b.onclick=()=>{$('#messageInput').value+=b.textContent;$('#messageInput').dispatchEvent(new Event('input'));$('#emojiPanel').classList.remove('active');$('#messageInput').focus()})
   };
   $('#emojiBtn').onclick=()=>{$('#emojiPanel').classList.toggle('active');renderEmoji()};$$('.emoji-tabs button').forEach(b=>b.onclick=()=>renderEmoji());
+
+
+  function messageBytes(m){
+    if(!m?.data)return 0;
+    if(m.size)return Number(m.size)||0;
+    if(typeof m.data==='string'&&m.data.startsWith('data:'))return Math.floor((m.data.length-(m.data.indexOf(',')+1))*0.75);
+    return 0;
+  }
+  async function cleanupMedia(force=false){
+    const now=Date.now(),chats=Object.fromEntries((await all('chats')).map(c=>[c.id,c]));let removed=0,bytes=0;
+    for(const m of await all('messages')){
+      if(!['image','video','audio','file'].includes(m.type)||!m.data)continue;
+      const ttl=Number(chats[m.chatId]?.mediaRetentionMs||0);
+      if(force||(ttl&&now-m.createdAt>ttl)){bytes+=messageBytes(m);m.data='';m.mediaExpired=true;await put('messages',m);removed++}
+    }
+    if(activeChatId)renderMessages();toast(removed?`تم تنظيف ${removed} ملف/وسيط`:'لا توجد وسائط تحتاج تنظيفًا');return {removed,bytes}
+  }
+  async function renderStorageManager(){
+    const msgs=await all('messages'),by={image:0,video:0,audio:0,file:0},counts={image:0,video:0,audio:0,file:0};
+    for(const m of msgs){if(by[m.type]!==undefined&&m.data){by[m.type]+=messageBytes(m);counts[m.type]++}}
+    const total=Object.values(by).reduce((a,b)=>a+b,0)||1,labels={image:'الصور',video:'الفيديو',audio:'الصوتيات',file:'الملفات'};
+    $('#storageSummary').innerHTML=Object.keys(by).map(k=>`<div class="storage-row"><div class="meta"><b>${labels[k]}</b><small>${counts[k]} عنصر • ${formatBytes(by[k])}</small><div class="storage-meter"><span style="width:${Math.round(by[k]/total*100)}%"></span></div></div><button class="cleanup-chip" data-clean-type="${k}">مسح</button></div>`).join('')+`<div class="small muted" style="margin-top:10px">إجمالي الوسائط المحلية تقريبًا ${formatBytes(total===1?0:total)}</div>`;
+    $$('[data-clean-type]').forEach(b=>b.onclick=async()=>{const type=b.dataset.cleanType;for(const m of (await all('messages')).filter(m=>m.type===type&&m.data)){m.data='';m.mediaExpired=true;await put('messages',m)}await renderStorageManager();if(activeChatId)renderMessages()});
+  }
+  $('#openStorageManager').onclick=async()=>{await renderStorageManager();$('#storageModal').classList.add('active')};
+  $('#closeStorage').onclick=()=>$('#storageModal').classList.remove('active');
+  $('#cleanupNow').onclick=async()=>{await cleanupMedia(false);await renderStorageManager()};
+
+  async function renderGroupAdmin(c){
+    const gs=c.groupSettings||{},admin=['owner','admin'].includes(c.myRole),owner=c.myRole==='owner';
+    $('#groupRoleNote').textContent=c.myRole==='owner'?'أنت مالك المجموعة':c.myRole==='admin'?'أنت مشرف':'أنت عضو';
+    for(const [id,val] of [['onlyAdminsSend',gs.onlyAdminsSend],['onlyAdminsEdit',gs.onlyAdminsEdit],['onlyAdminsAdd',gs.onlyAdminsAdd],['joinApproval',gs.joinApproval]]){$('#'+id).checked=!!val;$('#'+id).disabled=!admin}
+    $('#saveGroupSettings').style.display=admin?'block':'none';$('#createInvite').style.display=admin?'inline-block':'none';$('#resetInvite').style.display=admin?'inline-block':'none';
+    const link=gs.inviteCode?`${location.origin}${location.pathname}?join=${encodeURIComponent(gs.inviteCode)}`:'';
+    $('#inviteBox').textContent=link||'لم يتم إنشاء رابط دعوة';
+    $('#groupMembersManage').innerHTML=(c.cloudMembers||[]).map(m=>`<div class="member-manage"><div class="member-name">@${esc(m.username||'Pi')}</div><span class="role-pill">${m.role==='owner'?'المالك':m.role==='admin'?'مشرف':'عضو'}</span>${owner&&m.user_id!==cloud.user.id?`<button class="cleanup-chip" data-role-user="${m.user_id}" data-role="${m.role==='admin'?'member':'admin'}">${m.role==='admin'?'إلغاء الإشراف':'تعيين مشرف'}</button>`:''}</div>`).join('');
+    $$('[data-role-user]').forEach(b=>b.onclick=async()=>{await api('/api/rooms',{method:'POST',body:JSON.stringify({action:'member_role',roomId:c.cloudRoomId,userId:b.dataset.roleUser,role:b.dataset.role})});await syncCloudRooms();const fresh=await get('chats',c.id);renderGroupAdmin(fresh)});
+    if(admin)loadJoinRequests(c);else $('#joinRequests').innerHTML='';
+  }
+  $('#saveGroupSettings').onclick=async()=>{const c=await get('chats',activeChatId);await api('/api/rooms',{method:'POST',body:JSON.stringify({action:'group_settings',roomId:c.cloudRoomId,onlyAdminsSend:$('#onlyAdminsSend').checked,onlyAdminsEdit:$('#onlyAdminsEdit').checked,onlyAdminsAdd:$('#onlyAdminsAdd').checked,joinApproval:$('#joinApproval').checked})});await syncCloudRooms();toast('تم حفظ صلاحيات المجموعة')};
+  $('#createInvite').onclick=async()=>{const c=await get('chats',activeChatId);await api('/api/rooms',{method:'POST',body:JSON.stringify({action:'invite_create',roomId:c.cloudRoomId,expiresHours:168,maxUses:100})});await syncCloudRooms();const fresh=await get('chats',c.id);renderGroupAdmin(fresh);toast('تم إنشاء رابط دعوة لمدة 7 أيام')};
+  $('#resetInvite').onclick=async()=>{const c=await get('chats',activeChatId);await api('/api/rooms',{method:'POST',body:JSON.stringify({action:'invite_reset',roomId:c.cloudRoomId})});await syncCloudRooms();const fresh=await get('chats',c.id);renderGroupAdmin(fresh);toast('تم إلغاء رابط الدعوة')};
+  $('#inviteBox').onclick=async()=>{const t=$('#inviteBox').textContent;if(t.startsWith('http')){try{await navigator.clipboard.writeText(t);toast('تم نسخ رابط الدعوة')}catch{}}};
+  async function loadJoinRequests(c){try{const d=await api('/api/rooms',{method:'POST',body:JSON.stringify({action:'join_requests',roomId:c.cloudRoomId})});$('#joinRequests').innerHTML=(d.requests||[]).length?'<h3 style="margin-top:14px">طلبات الانضمام</h3>'+d.requests.map(r=>`<div class="join-request"><b>@${esc(r.username)}</b><button class="cleanup-chip" data-join="${r.id}" data-dec="approve">قبول</button><button class="cleanup-chip" data-join="${r.id}" data-dec="reject">رفض</button></div>`).join(''):'';$$('[data-join]').forEach(b=>b.onclick=async()=>{await api('/api/rooms',{method:'POST',body:JSON.stringify({action:'join_request_action',roomId:c.cloudRoomId,requestId:Number(b.dataset.join),decision:b.dataset.dec})});loadJoinRequests(c)})}catch(e){console.warn(e)}}
+  async function handleInviteLink(){
+    const code=new URL(location.href).searchParams.get('join');if(!code||!isCloudReady())return;
+    try{const d=await api('/api/rooms',{method:'POST',body:JSON.stringify({action:'join_by_invite',code})});if(d.status==='pending')toast('تم إرسال طلب الانضمام للمشرفين');else{await syncCloudRooms();toast('تم الانضمام إلى المجموعة')}history.replaceState({},'',location.pathname)}catch(e){toast(e.message==='invite_expired'?'انتهت صلاحية رابط الدعوة':'تعذر استخدام رابط الدعوة')}
+  }
 
   // Cloud-aware user creation/search UI.
   const oldCreateChat=$('#createChat').onclick;
