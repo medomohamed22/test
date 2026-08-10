@@ -23,6 +23,7 @@ async function hydrateRooms(userId) {
       topic: `room:${r.id}`,
       kind: r.kind,
       createdAt: r.created_at,
+      createdBy: r.created_by,
       name: r.kind === 'group' ? (group?.name || 'مجموعة') : (other?.username || 'مستخدم Pi'),
       description: group?.description || '',
       avatarUrl: group?.avatar_url || null,

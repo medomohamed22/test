@@ -1,9 +1,17 @@
-const { send, allowMethods, requireUser, sb } = require('./_lib');
+const { send, allowMethods, body, requireUser, sb } = require('./_lib');
 
 module.exports = async function handler(req, res) {
-  if (!allowMethods(req, res, ['GET'])) return;
+  if (!allowMethods(req, res, ['GET','POST'])) return;
   try {
     const me = requireUser(req);
+    if(req.method==='POST'){
+      await sb(`app_users?id=eq.${encodeURIComponent(me.sub)}`,{
+        method:'PATCH',
+        data:{last_seen_at:new Date().toISOString()},
+        headers:{Prefer:'return=minimal'}
+      });
+      return send(res,200,{ok:true,at:new Date().toISOString()});
+    }
     const raw = String(req.query?.q || '').trim();
     if (raw.length < 1) return send(res, 200, { users: [] });
     const q = raw.replace(/[,%()]/g, '').slice(0, 30);
