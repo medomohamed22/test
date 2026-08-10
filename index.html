@@ -774,7 +774,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   const channels = new Map();
   const transfers = new Map();
   let accountChannel = null, syncInterval = null, pullingPending = false;
-  let cloud = { token:null, user:null, supabaseUrl:null, supabaseKey:null, vapidPublicKey:'', expiresAt:0, client:null };
+  let cloud = { token:null, user:null, supabaseUrl:null, supabaseKey:null, expiresAt:0, client:null };
   let cloudSearchTimer = null, typingTimer = null, refreshTimer = null;
 
   function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(16).slice(2)); }
@@ -789,7 +789,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   }
   function saveCloud(){
     if(!cloud.token)return localStorage.removeItem(CLOUD_KEY);
-    localStorage.setItem(CLOUD_KEY,JSON.stringify({token:cloud.token,user:cloud.user,supabaseUrl:cloud.supabaseUrl,supabaseKey:cloud.supabaseKey,vapidPublicKey:cloud.vapidPublicKey,expiresAt:cloud.expiresAt}));
+    localStorage.setItem(CLOUD_KEY,JSON.stringify({token:cloud.token,user:cloud.user,supabaseUrl:cloud.supabaseUrl,supabaseKey:cloud.supabaseKey,expiresAt:cloud.expiresAt}));
   }
   function renderCloudUI(){
     const logged=!!cloud.user;window.__chatwayCloudUserId=cloud.user?.id||'';
@@ -819,7 +819,7 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
       const raw=JSON.parse(localStorage.getItem(CLOUD_KEY)||'null'); if(!raw?.token)return renderCloudUI();
       const claims=decodeJwt(raw.token); if(!claims?.exp||claims.exp*1000<Date.now()+30000){localStorage.removeItem(CLOUD_KEY);return renderCloudUI()}
       cloud={...cloud,...raw};makeClient();renderCloudUI();
-      await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();enablePush();scheduleRefresh();openDeepLinkedRoom();
+      await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();
     }catch(e){console.warn('restore cloud',e);logoutCloud(false)}
   }
   function scheduleRefresh(){
@@ -840,15 +840,15 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     try{
       const auth=await window.Pi.authenticate(['username'], payment=>console.warn('Incomplete Pi payment ignored',payment));
       const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken:auth.accessToken})});
-      cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.vapidPublicKey=data.vapidPublicKey||'';cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;
+      cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;
       sessionStorage.setItem('violetPiAccessToken',auth.accessToken);
-      makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();enablePush();scheduleRefresh();openDeepLinkedRoom();toast(`أهلاً @${cloud.user.username}`);
+      makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();toast(`أهلاً @${cloud.user.username}`);
     }catch(e){console.error('Pi login',e);toast(e.message==='pi_unauthorized'?'تعذر التحقق من حساب Pi':'فشل تسجيل الدخول بـ Pi')}
     finally{setPiLoginLoading(false)}
   }
   async function refreshPiSession(){
     const accessToken=sessionStorage.getItem('violetPiAccessToken');if(!accessToken)return false;
-    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.vapidPublicKey=data.vapidPublicKey||'';cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();enablePush();scheduleRefresh();openDeepLinkedRoom();return true}catch{return false}
+    try{const data=await api('/api/auth',{method:'POST',body:JSON.stringify({accessToken})});cloud.token=data.token;cloud.user=data.user;cloud.supabaseUrl=data.supabaseUrl;cloud.supabaseKey=data.supabaseKey;cloud.expiresAt=Date.now()+(data.expiresIn||3600)*1000;makeClient();saveCloud();renderCloudUI();await ensureAccountChannel();await syncCloudRooms();await pullPendingDeliveries();startBackgroundSync();startHeartbeat();retryPendingMessages();scheduleRefresh();openDeepLinkedRoom();return true}catch{return false}
   }
   async function logoutCloud(show=true){
     for(const ch of channels.values()){try{await cloud.client?.removeChannel(ch)}catch{}}channels.clear();
@@ -1148,24 +1148,6 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
   forwardTo=async function(chatId){const chosen=(await all('messages')).filter(m=>selectedIds.has(m.id)).map(m=>({...m}));await oldForwardTo(chatId);const target=await get('chats',chatId);if(target?.cloudRoomId&&isCloudReady()){for(const m of chosen){const copy={...m,clientId:uuid(),createdAt:Date.now(),sender:'me',forwarded:true};delete copy.id;delete copy.chatId;try{let storagePath=null;if(['image','video','audio','file'].includes(copy.type)&&copy.data){const blob=await (await fetch(copy.data)).blob();const file=new File([blob],copy.name||`forward-${Date.now()}`,{type:copy.mime||blob.type||'application/octet-stream'});storagePath=await uploadDeliveryFile(target,file,copy.clientId)}await enqueueDelivery(target,copy,storagePath)}catch(e){console.warn('forward queue',e)}}}};
 
 
-  function b64ToUint8Array(base64){
-    const padding='='.repeat((4-base64.length%4)%4),s=(base64+padding).replace(/-/g,'+').replace(/_/g,'/');
-    const raw=atob(s);return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
-  }
-  async function enablePush(){
-    if(!isCloudReady()||!cloud.vapidPublicKey||!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return false;
-    try{
-      const reg=await navigator.serviceWorker.register('/sw.js',{scope:'/'});
-      let perm=Notification.permission;
-      if(perm==='default')perm=await Notification.requestPermission();
-      if(perm!=='granted')return false;
-      let sub=await reg.pushManager.getSubscription();
-      if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToUint8Array(cloud.vapidPublicKey)});
-      await api('/api/push',{method:'POST',body:JSON.stringify({action:'subscribe',subscription:sub.toJSON()})});
-      return true;
-    }catch(e){console.warn('push setup',e);return false}
-  }
-
   async function heartbeat(){
     if(!isCloudReady())return;
     try{await api('/api/users',{method:'POST',body:'{}'})}catch{}
@@ -1224,12 +1206,6 @@ window.addEventListener('error',e=>console.error('ChatWay runtime error:',e.erro
     }catch(e){console.warn('media ready',e)}
   }
 
-  // Push message deep link.
-  navigator.serviceWorker?.addEventListener?.('message',async e=>{
-    if(e.data?.type==='open_room'&&e.data.roomId){
-      await syncCloudRooms();const c=await localChatByRoom(e.data.roomId);if(c)openChat(c.id);
-    }
-  });
   async function openDeepLinkedRoom(){
     const roomId=new URL(location.href).searchParams.get('room');if(!roomId||!isCloudReady())return;
     await syncCloudRooms();const c=await localChatByRoom(roomId);if(c)await openChat(c.id);
